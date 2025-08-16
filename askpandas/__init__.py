@@ -23,7 +23,7 @@ from .visualization.charts import (
     get_plot_colors,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __author__ = "Md Irfan Ali"
 __email__ = "irfanali29@hotmail.com"
 

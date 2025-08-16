@@ -3,6 +3,10 @@
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PyPI version](https://badge.fury.io/py/askpandas.svg)](https://badge.fury.io/py/askpandas)
+[![Downloads](https://static.pepy.tech/badge/askpandas)](https://pepy.tech/project/askpandas)
+[![GitHub stars](https://img.shields.io/github/stars/irfanalidv/AskPandas?style=social)](https://github.com/irfanalidv/AskPandas)
+[![GitHub forks](https://img.shields.io/github/forks/irfanalidv/AskPandas?style=social)](https://github.com/irfanalidv/AskPandas)
+[![GitHub issues](https://img.shields.io/github/issues/irfanalidv/AskPandas)](https://github.com/irfanalidv/AskPandas/issues)
 
 AskPandas is an open-source Python library that lets you query and transform CSV data using natural language, powered by free, local open-source LLMs via Ollama. **No API keys, no cloud, no cost.**
 
