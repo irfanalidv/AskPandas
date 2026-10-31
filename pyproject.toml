@@ -65,7 +65,7 @@ demo = ["faker>=18.0.0"]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
-    "ruff>=0.6.0",
+    "ruff>=0.17.3",
     "build>=1.0.0",
     "twine>=5.0.0",
 ]
