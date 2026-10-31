@@ -3,6 +3,7 @@ Advanced data quality assessment and cleaning utilities for AskPandas.
 Provides comprehensive data quality analysis and automated cleaning capabilities.
 """
 
+import warnings
 from datetime import datetime
 from typing import Any
 
@@ -439,9 +440,12 @@ class DataQualityAnalyzer:
             if is_text_column(self.df[col]):
                 # Try to detect date columns
                 try:
-                    pd.to_datetime(self.df[col].head(100))
-                    # Check for unreasonable dates
-                    dates = pd.to_datetime(self.df[col], errors="coerce")
+                    with warnings.catch_warnings():
+                        # "Could not infer format" is expected while probing columns
+                        warnings.simplefilter("ignore", UserWarning)
+                        pd.to_datetime(self.df[col].head(100))
+                        # Check for unreasonable dates
+                        dates = pd.to_datetime(self.df[col], errors="coerce")
                     if dates.notna().sum() > 0:
                         min_date = dates.min()
                         max_date = dates.max()
@@ -782,7 +786,9 @@ class DataCleaner:
 
                 # Try to convert to datetime
                 try:
-                    datetime_col = pd.to_datetime(self.df[col], errors="coerce")
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", UserWarning)
+                        datetime_col = pd.to_datetime(self.df[col], errors="coerce")
                     if datetime_col.notna().sum() > len(self.df) * 0.8:  # 80% conversion success
                         self.df[col] = datetime_col
                         self.cleaning_log.append(f"Converted {col} to datetime type")

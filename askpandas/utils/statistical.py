@@ -347,9 +347,12 @@ class StatisticalAnalyzer:
             f_stat, p_val = f_oneway(*group_data)
 
             # Calculate effect size (eta-squared)
-            total_ss = sum((data - data.mean()) ** 2 for data in group_data)
-            between_ss = sum(
-                len(data) * (data.mean() - self.df[value_col].mean()) ** 2 for data in group_data
+            # Effect size: eta^2 = SS_between / SS_total over the pooled observations
+            pooled = pd.concat(group_data)
+            grand_mean = pooled.mean()
+            total_ss = float(((pooled - grand_mean) ** 2).sum())
+            between_ss = float(
+                sum(len(data) * (data.mean() - grand_mean) ** 2 for data in group_data)
             )
             eta_squared = between_ss / total_ss if total_ss > 0 else 0
 
