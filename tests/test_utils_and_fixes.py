@@ -234,6 +234,23 @@ def test_sandbox_last_error_resets_after_success() -> None:
     assert executor.last_error is None
 
 
+# ------------------------------------------------------------ query checks
+
+
+def test_validate_query_ignores_plain_english_words() -> None:
+    result = ap.validate_query("Show total revenue by region for 'New York'", ["revenue", "region"])
+    assert result["is_valid"] is True
+    assert result["matched_columns"] == ["revenue", "region"]
+
+
+def test_validate_query_flags_explicit_unknown_columns() -> None:
+    result = ap.validate_query("average unit_price by `Segment`", ["Revenue", "segment"])
+    assert result["is_valid"] is False
+    assert result["missing_columns"] == ["unit_price"]
+    assert result["matched_columns"] == ["segment"]
+    assert ap.validate_query("   ", ["a"])["errors"] == ["Query cannot be empty"]
+
+
 # --------------------------------------------------------------- statistics
 
 

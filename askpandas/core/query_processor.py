@@ -152,21 +152,37 @@ class QueryProcessor:
         return suggestions
 
     def validate_query(self, query: str, available_columns: list[str]) -> dict[str, Any]:
-        """Validate if the query can be executed with available columns."""
-        entities = self.extract_entities(query)
+        """Check a query against the available column names before sending it to an LLM.
+
+        A name counts as an explicit column reference when it is wrapped in backticks
+        (```col```) or written in snake_case. Quoted strings are treated as values. Explicit references that do
+        not match a column (case-insensitively) make the query invalid; plain English
+        words are never treated as missing columns. ``matched_columns`` lists the
+        available columns the query mentions.
+        """
+        columns = [str(c) for c in available_columns]
+        lookup = {c.lower(): c for c in columns}
         validation: dict[str, Any] = {
             "is_valid": True,
             "warnings": [],
             "errors": [],
             "missing_columns": [],
+            "matched_columns": [],
             "suggestions": [],
         }
 
-        # Check if mentioned columns exist
-        for col in entities["columns"]:
-            if col not in available_columns:
-                validation["missing_columns"].append(col)
-                validation["warnings"].append(f"Column '{col}' not found in the dataset")
+        words = re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", query)
+        for word in words:
+            col = lookup.get(word.lower())
+            if col is not None and col not in validation["matched_columns"]:
+                validation["matched_columns"].append(col)
+
+        quoted = re.findall(r"`([^`]+)`", query)
+        snake = [w for w in words if "_" in w.strip("_")]
+        for name in [*quoted, *snake]:
+            if name.lower() not in lookup and name not in validation["missing_columns"]:
+                validation["missing_columns"].append(name)
+                validation["warnings"].append(f"Column '{name}' not found in the dataset")
 
         if validation["missing_columns"]:
             validation["is_valid"] = False
