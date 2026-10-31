@@ -3,14 +3,17 @@ Performance benchmarking and optimization utilities for AskPandas.
 Provides tools to measure and improve performance of data operations.
 """
 
-import time
-import psutil
-import pandas as pd
-import numpy as np
-from typing import Dict, List, Any, Optional, Callable, Tuple
-from functools import wraps
 import gc
-import warnings
+import time
+from collections.abc import Callable
+from functools import wraps
+from typing import Any
+
+import numpy as np
+import pandas as pd
+import psutil
+
+from .helpers import is_text_column
 
 
 class PerformanceBenchmark:
@@ -23,7 +26,7 @@ class PerformanceBenchmark:
 
     def benchmark_operation(
         self, name: str, operation: Callable, *args, **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Benchmark a single operation."""
         # Clear memory before operation
         gc.collect()
@@ -36,10 +39,9 @@ class PerformanceBenchmark:
         start_cpu = time.process_time()
 
         try:
-            result = operation(*args, **kwargs)
+            operation(*args, **kwargs)
             success = True
         except Exception as e:
-            result = None
             success = False
             error = str(e)
 
@@ -72,8 +74,8 @@ class PerformanceBenchmark:
         return benchmark_result
 
     def benchmark_dataframe_operations(
-        self, df: pd.DataFrame, operations: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        self, df: pd.DataFrame, operations: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """Benchmark multiple dataframe operations."""
         results = {}
 
@@ -83,25 +85,14 @@ class PerformanceBenchmark:
             op_args = op_config.get("args", [])
             op_kwargs = op_config.get("kwargs", {})
 
-            # Create a copy of the dataframe for each operation
-            df_copy = df.copy()
-
-            # Wrap the operation to include the dataframe
-            def wrapped_operation():
-                return op_func(df_copy, *op_args, **op_kwargs)
-
-            result = self.benchmark_operation(op_name, wrapped_operation)
+            # Run each operation on a fresh copy of the dataframe
+            result = self.benchmark_operation(op_name, op_func, df.copy(), *op_args, **op_kwargs)
             results[op_name] = result
-
-            # Clean up
-            del df_copy
             gc.collect()
 
         return results
 
-    def compare_operations(
-        self, operation_sets: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+    def compare_operations(self, operation_sets: list[dict[str, Any]]) -> dict[str, Any]:
         """Compare performance of different operation sets."""
         comparison = {
             "operation_sets": [],
@@ -109,7 +100,7 @@ class PerformanceBenchmark:
             "recommendations": [],
         }
 
-        for i, op_set in enumerate(operation_sets):
+        for op_set in operation_sets:
             set_name = op_set["name"]
             operations = op_set["operations"]
 
@@ -119,9 +110,7 @@ class PerformanceBenchmark:
             success_count = 0
 
             for op in operations:
-                result = self.benchmark_operation(
-                    f"{set_name}_{op['name']}", op["function"]
-                )
+                result = self.benchmark_operation(f"{set_name}_{op['name']}", op["function"])
                 total_time += result["wall_time"]
                 total_memory += result["memory_delta_mb"]
                 if result["success"]:
@@ -145,15 +134,11 @@ class PerformanceBenchmark:
         )
 
         # Generate recommendations
-        comparison["recommendations"] = self._generate_performance_recommendations(
-            comparison
-        )
+        comparison["recommendations"] = self._generate_performance_recommendations(comparison)
 
         return comparison
 
-    def _generate_performance_recommendations(
-        self, comparison: Dict[str, Any]
-    ) -> List[str]:
+    def _generate_performance_recommendations(self, comparison: dict[str, Any]) -> list[str]:
         """Generate performance improvement recommendations."""
         recommendations = []
 
@@ -173,17 +158,12 @@ class PerformanceBenchmark:
                 )
 
         # Memory efficiency recommendations
-        memory_efficient = min(
-            comparison["operation_sets"], key=lambda x: x["total_memory_mb"]
-        )
-        memory_inefficient = max(
-            comparison["operation_sets"], key=lambda x: x["total_memory_mb"]
-        )
+        memory_efficient = min(comparison["operation_sets"], key=lambda x: x["total_memory_mb"])
+        memory_inefficient = max(comparison["operation_sets"], key=lambda x: x["total_memory_mb"])
 
         if memory_efficient["total_memory_mb"] > 0:
             memory_factor = (
-                memory_inefficient["total_memory_mb"]
-                / memory_efficient["total_memory_mb"]
+                memory_inefficient["total_memory_mb"] / memory_efficient["total_memory_mb"]
             )
             if memory_factor > 1.5:
                 recommendations.append(
@@ -201,7 +181,7 @@ class PerformanceBenchmark:
 
         return recommendations
 
-    def get_benchmark_summary(self) -> Dict[str, Any]:
+    def get_benchmark_summary(self) -> dict[str, Any]:
         """Get a summary of all benchmarks."""
         if not self.benchmarks:
             return {"message": "No benchmarks have been run yet"}
@@ -220,9 +200,7 @@ class PerformanceBenchmark:
             ),
             "total_time": total_time,
             "total_memory_mb": total_memory,
-            "average_time_per_op": (
-                total_time / total_operations if total_operations > 0 else 0
-            ),
+            "average_time_per_op": (total_time / total_operations if total_operations > 0 else 0),
             "average_memory_per_op": (
                 total_memory / total_operations if total_operations > 0 else 0
             ),
@@ -241,7 +219,7 @@ class MemoryTracker:
         """Initialize the memory tracker."""
         self.process = psutil.Process()
 
-    def get_memory_usage(self) -> Dict[str, int]:
+    def get_memory_usage(self) -> dict[str, int]:
         """Get current memory usage."""
         try:
             memory_info = self.process.memory_info()
@@ -255,7 +233,7 @@ class MemoryTracker:
 
     def get_memory_trend(
         self, duration: float = 1.0, interval: float = 0.1
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Track memory usage over time."""
         trend = []
         start_time = time.time()
@@ -281,7 +259,7 @@ class PerformanceOptimizer:
         """Initialize the optimizer."""
         self.optimization_suggestions = []
 
-    def analyze_dataframe_performance(self, df: pd.DataFrame) -> Dict[str, Any]:
+    def analyze_dataframe_performance(self, df: pd.DataFrame) -> dict[str, Any]:
         """Analyze dataframe for performance optimization opportunities."""
         analysis = {
             "size_analysis": self._analyze_size_optimization(df),
@@ -292,13 +270,11 @@ class PerformanceOptimizer:
         }
 
         # Generate recommendations
-        analysis["recommendations"] = self._generate_optimization_recommendations(
-            analysis
-        )
+        analysis["recommendations"] = self._generate_optimization_recommendations(analysis)
 
         return analysis
 
-    def _analyze_size_optimization(self, df: pd.DataFrame) -> Dict[str, Any]:
+    def _analyze_size_optimization(self, df: pd.DataFrame) -> dict[str, Any]:
         """Analyze opportunities for size optimization."""
         size_analysis = {
             "current_size_mb": df.memory_usage(deep=True).sum() / 1024 / 1024,
@@ -312,9 +288,7 @@ class PerformanceOptimizer:
             col_analysis = self._analyze_column_optimization(df[col])
             if col_analysis["can_optimize"]:
                 size_analysis["optimization_opportunities"].append(col_analysis)
-                size_analysis["potential_savings_mb"] += col_analysis[
-                    "potential_savings_mb"
-                ]
+                size_analysis["potential_savings_mb"] += col_analysis["potential_savings_mb"]
 
         size_analysis["optimized_size_mb"] = (
             size_analysis["current_size_mb"] - size_analysis["potential_savings_mb"]
@@ -322,7 +296,7 @@ class PerformanceOptimizer:
 
         return size_analysis
 
-    def _analyze_column_optimization(self, series: pd.Series) -> Dict[str, Any]:
+    def _analyze_column_optimization(self, series: pd.Series) -> dict[str, Any]:
         """Analyze a single column for optimization opportunities."""
         analysis = {
             "column": series.name,
@@ -343,22 +317,16 @@ class PerformanceOptimizer:
                 if max_val <= 255:
                     analysis["suggested_type"] = "uint8"
                     analysis["can_optimize"] = True
-                    analysis["reason"] = (
-                        f"Values range from {min_val} to {max_val}, can use uint8"
-                    )
+                    analysis["reason"] = f"Values range from {min_val} to {max_val}, can use uint8"
                 elif max_val <= 65535:
                     analysis["suggested_type"] = "uint16"
                     analysis["can_optimize"] = True
-                    analysis["reason"] = (
-                        f"Values range from {min_val} to {max_val}, can use uint16"
-                    )
+                    analysis["reason"] = f"Values range from {min_val} to {max_val}, can use uint16"
             else:
                 if min_val >= -128 and max_val <= 127:
                     analysis["suggested_type"] = "int8"
                     analysis["can_optimize"] = True
-                    analysis["reason"] = (
-                        f"Values range from {min_val} to {max_val}, can use int8"
-                    )
+                    analysis["reason"] = f"Values range from {min_val} to {max_val}, can use int8"
 
         # Float optimization
         elif str(series.dtype).startswith("float"):
@@ -370,38 +338,30 @@ class PerformanceOptimizer:
                 if precision_loss < 1e-6:
                     analysis["suggested_type"] = "float32"
                     analysis["can_optimize"] = True
-                    analysis["reason"] = (
-                        f"Precision loss is {precision_loss:.2e}, can use float32"
-                    )
+                    analysis["reason"] = f"Precision loss is {precision_loss:.2e}, can use float32"
             except:
                 pass
 
         # Object to category optimization
-        elif series.dtype == "object":
+        elif is_text_column(series):
             unique_ratio = series.nunique() / len(series)
             if unique_ratio < 0.5:  # Less than 50% unique values
                 analysis["suggested_type"] = "category"
                 analysis["can_optimize"] = True
-                analysis["reason"] = (
-                    f"Only {unique_ratio:.1%} unique values, can use category"
-                )
+                analysis["reason"] = f"Only {unique_ratio:.1%} unique values, can use category"
 
         # Calculate potential savings
         if analysis["can_optimize"]:
             try:
                 optimized_series = series.astype(analysis["suggested_type"])
-                optimized_size_mb = (
-                    optimized_series.memory_usage(deep=True) / 1024 / 1024
-                )
-                analysis["potential_savings_mb"] = (
-                    analysis["current_size_mb"] - optimized_size_mb
-                )
+                optimized_size_mb = optimized_series.memory_usage(deep=True) / 1024 / 1024
+                analysis["potential_savings_mb"] = analysis["current_size_mb"] - optimized_size_mb
             except:
                 analysis["can_optimize"] = False
 
         return analysis
 
-    def _analyze_type_optimization(self, df: pd.DataFrame) -> Dict[str, Any]:
+    def _analyze_type_optimization(self, df: pd.DataFrame) -> dict[str, Any]:
         """Analyze data type optimization opportunities."""
         return {
             "current_types": df.dtypes.to_dict(),
@@ -414,7 +374,7 @@ class PerformanceOptimizer:
             ),
         }
 
-    def _analyze_memory_usage(self, df: pd.DataFrame) -> Dict[str, Any]:
+    def _analyze_memory_usage(self, df: pd.DataFrame) -> dict[str, Any]:
         """Analyze memory usage patterns."""
         memory_info = df.memory_usage(deep=True)
 
@@ -425,14 +385,12 @@ class PerformanceOptimizer:
             "peak_memory_mb": self._get_peak_memory(),
         }
 
-    def _get_memory_by_type(self, df: pd.DataFrame) -> Dict[str, float]:
+    def _get_memory_by_type(self, df: pd.DataFrame) -> dict[str, float]:
         """Get memory usage grouped by data type."""
         memory_by_type = {}
         for dtype in df.dtypes.unique():
             cols = df.select_dtypes(include=[dtype]).columns
-            memory_by_type[str(dtype)] = (
-                df[cols].memory_usage(deep=True).sum() / 1024 / 1024
-            )
+            memory_by_type[str(dtype)] = df[cols].memory_usage(deep=True).sum() / 1024 / 1024
 
         return memory_by_type
 
@@ -444,19 +402,17 @@ class PerformanceOptimizer:
         except:
             return 0.0
 
-    def _analyze_operation_optimization(self, df: pd.DataFrame) -> Dict[str, Any]:
+    def _analyze_operation_optimization(self, df: pd.DataFrame) -> dict[str, Any]:
         """Analyze operation optimization opportunities."""
         return {
-            "vectorization_opportunities": self._identify_vectorization_opportunities(
-                df
-            ),
+            "vectorization_opportunities": self._identify_vectorization_opportunities(df),
             "chunking_recommendations": self._get_chunking_recommendations(df),
             "parallel_processing_opportunities": self._identify_parallel_processing_opportunities(
                 df
             ),
         }
 
-    def _identify_vectorization_opportunities(self, df: pd.DataFrame) -> List[str]:
+    def _identify_vectorization_opportunities(self, df: pd.DataFrame) -> list[str]:
         """Identify operations that could benefit from vectorization."""
         opportunities = []
 
@@ -464,18 +420,14 @@ class PerformanceOptimizer:
         # This is a simplified analysis - in practice, you'd need more sophisticated code analysis
 
         if len(df) > 10000:
-            opportunities.append(
-                "Large dataset detected - ensure vectorized operations"
-            )
+            opportunities.append("Large dataset detected - ensure vectorized operations")
 
-        if df.select_dtypes(include=["object"]).shape[1] > 0:
-            opportunities.append(
-                "String operations detected - consider vectorized string methods"
-            )
+        if df.select_dtypes(include=["object", "string"]).shape[1] > 0:
+            opportunities.append("String operations detected - consider vectorized string methods")
 
         return opportunities
 
-    def _get_chunking_recommendations(self, df: pd.DataFrame) -> Dict[str, Any]:
+    def _get_chunking_recommendations(self, df: pd.DataFrame) -> dict[str, Any]:
         """Get recommendations for chunked processing."""
         total_memory_mb = df.memory_usage(deep=True).sum() / 1024 / 1024
 
@@ -491,9 +443,7 @@ class PerformanceOptimizer:
                 "reason": "Dataset size is manageable for in-memory processing",
             }
 
-    def _identify_parallel_processing_opportunities(
-        self, df: pd.DataFrame
-    ) -> List[str]:
+    def _identify_parallel_processing_opportunities(self, df: pd.DataFrame) -> list[str]:
         """Identify operations that could benefit from parallel processing."""
         opportunities = []
 
@@ -509,9 +459,7 @@ class PerformanceOptimizer:
 
         return opportunities
 
-    def _generate_optimization_recommendations(
-        self, analysis: Dict[str, Any]
-    ) -> List[str]:
+    def _generate_optimization_recommendations(self, analysis: dict[str, Any]) -> list[str]:
         """Generate optimization recommendations."""
         recommendations = []
 
@@ -520,7 +468,7 @@ class PerformanceOptimizer:
         if size_analysis["potential_savings_mb"] > 10:
             recommendations.append(
                 f"Memory optimization: Potential savings of {size_analysis['potential_savings_mb']:.1f}MB "
-                f"({size_analysis['potential_savings_mb']/size_analysis['current_size_mb']*100:.1f}%)"
+                f"({size_analysis['potential_savings_mb'] / size_analysis['current_size_mb'] * 100:.1f}%)"
             )
 
         # Chunking recommendations
@@ -531,16 +479,12 @@ class PerformanceOptimizer:
             )
 
         # Vectorization recommendations
-        vectorization = analysis["operation_optimization"][
-            "vectorization_opportunities"
-        ]
+        vectorization = analysis["operation_optimization"]["vectorization_opportunities"]
         if vectorization:
             recommendations.extend(vectorization)
 
         # Parallel processing recommendations
-        parallel = analysis["operation_optimization"][
-            "parallel_processing_opportunities"
-        ]
+        parallel = analysis["operation_optimization"]["parallel_processing_opportunities"]
         if parallel:
             recommendations.extend(parallel)
 
@@ -571,7 +515,7 @@ def benchmark_function(name: str = None):
     return decorator
 
 
-def optimize_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
+def optimize_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
     """Quick dataframe optimization."""
     optimizer = PerformanceOptimizer()
     analysis = optimizer.analyze_dataframe_performance(df)
@@ -583,9 +527,9 @@ def optimize_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
     for col_analysis in analysis["size_analysis"]["optimization_opportunities"]:
         if col_analysis["can_optimize"]:
             try:
-                optimized_df[col_analysis["column"]] = optimized_df[
-                    col_analysis["column"]
-                ].astype(col_analysis["suggested_type"])
+                optimized_df[col_analysis["column"]] = optimized_df[col_analysis["column"]].astype(
+                    col_analysis["suggested_type"]
+                )
                 optimizations_applied.append(
                     f"Optimized {col_analysis['column']}: {col_analysis['current_type']} → {col_analysis['suggested_type']}"
                 )
@@ -595,7 +539,7 @@ def optimize_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
     return optimized_df, optimizations_applied
 
 
-def get_performance_summary() -> Dict[str, Any]:
+def get_performance_summary() -> dict[str, Any]:
     """Get system performance summary."""
     try:
         cpu_percent = psutil.cpu_percent(interval=1)

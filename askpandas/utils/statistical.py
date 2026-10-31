@@ -3,12 +3,12 @@ Advanced statistical analysis utilities for AskPandas.
 Provides comprehensive statistical functions for data analysis.
 """
 
-import pandas as pd
 import numpy as np
-from typing import Dict, List, Tuple, Optional, Union
+import pandas as pd
 from scipy import stats
 from scipy.stats import chi2_contingency, f_oneway, kruskal
-import warnings
+
+from .helpers import is_numeric_column
 
 
 class StatisticalAnalyzer:
@@ -19,17 +19,17 @@ class StatisticalAnalyzer:
         self.df = df
         self.numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
         self.categorical_cols = df.select_dtypes(
-            include=["object", "category"]
+            include=["object", "string", "category"]
         ).columns.tolist()
 
-    def descriptive_statistics(self, columns: Optional[List[str]] = None) -> Dict:
+    def descriptive_statistics(self, columns: list[str] | None = None) -> dict:
         """Generate comprehensive descriptive statistics."""
         if columns is None:
             columns = self.numeric_cols
 
         stats_dict = {}
         for col in columns:
-            if col in self.df.columns and self.df[col].dtype in ["int64", "float64"]:
+            if col in self.df.columns and is_numeric_column(self.df[col]):
                 col_data = self.df[col].dropna()
                 if len(col_data) > 0:
                     stats_dict[col] = {
@@ -45,17 +45,14 @@ class StatisticalAnalyzer:
                         "skewness": col_data.skew(),
                         "kurtosis": col_data.kurtosis(),
                         "missing_count": self.df[col].isnull().sum(),
-                        "missing_percentage": (
-                            self.df[col].isnull().sum() / len(self.df)
-                        )
-                        * 100,
+                        "missing_percentage": (self.df[col].isnull().sum() / len(self.df)) * 100,
                     }
 
         return stats_dict
 
     def correlation_analysis(
         self, method: str = "pearson", significance_level: float = 0.05
-    ) -> Dict:
+    ) -> dict:
         """Perform comprehensive correlation analysis."""
         if len(self.numeric_cols) < 2:
             return {"error": "Need at least 2 numeric columns for correlation analysis"}
@@ -98,7 +95,9 @@ class StatisticalAnalyzer:
                         significance = (
                             "high"
                             if abs(corr_val) > 0.7
-                            else "medium" if abs(corr_val) > 0.5 else "low"
+                            else "medium"
+                            if abs(corr_val) > 0.5
+                            else "low"
                         )
                         significant_correlations.append(
                             {
@@ -132,9 +131,7 @@ class StatisticalAnalyzer:
         else:
             return "Very weak or no correlation"
 
-    def outlier_detection(
-        self, columns: Optional[List[str]] = None, method: str = "iqr"
-    ) -> Dict:
+    def outlier_detection(self, columns: list[str] | None = None, method: str = "iqr") -> dict:
         """Detect outliers using multiple methods."""
         if columns is None:
             columns = self.numeric_cols
@@ -142,7 +139,7 @@ class StatisticalAnalyzer:
         outliers = {}
 
         for col in columns:
-            if col in self.df.columns and self.df[col].dtype in ["int64", "float64"]:
+            if col in self.df.columns and is_numeric_column(self.df[col]):
                 col_data = self.df[col].dropna()
                 if len(col_data) == 0:
                     continue
@@ -185,9 +182,7 @@ class StatisticalAnalyzer:
                     lower_bound = Q1 - 1.5 * IQR
                     upper_bound = Q3 + 1.5 * IQR
 
-                    outliers_mask_iqr = (col_data < lower_bound) | (
-                        col_data > upper_bound
-                    )
+                    outliers_mask_iqr = (col_data < lower_bound) | (col_data > upper_bound)
 
                     # Z-score method
                     z_scores = np.abs(stats.zscore(col_data))
@@ -209,7 +204,7 @@ class StatisticalAnalyzer:
 
         return outliers
 
-    def normality_tests(self, columns: Optional[List[str]] = None) -> Dict:
+    def normality_tests(self, columns: list[str] | None = None) -> dict:
         """Perform normality tests on numeric columns."""
         if columns is None:
             columns = self.numeric_cols
@@ -217,7 +212,7 @@ class StatisticalAnalyzer:
         normality_results = {}
 
         for col in columns:
-            if col in self.df.columns and self.df[col].dtype in ["int64", "float64"]:
+            if col in self.df.columns and is_numeric_column(self.df[col]):
                 col_data = self.df[col].dropna()
                 if len(col_data) < 3:
                     continue
@@ -267,7 +262,7 @@ class StatisticalAnalyzer:
         else:
             return "Likely not normal"
 
-    def hypothesis_testing(self, test_type: str, **kwargs) -> Dict:
+    def hypothesis_testing(self, test_type: str, **kwargs) -> dict:
         """Perform various hypothesis tests."""
         if test_type == "t_test_independent":
             return self._independent_t_test(**kwargs)
@@ -284,9 +279,7 @@ class StatisticalAnalyzer:
         else:
             return {"error": f"Unknown test type: {test_type}"}
 
-    def _independent_t_test(
-        self, group_col: str, value_col: str, group1: str, group2: str
-    ) -> Dict:
+    def _independent_t_test(self, group_col: str, value_col: str, group1: str, group2: str) -> dict:
         """Perform independent t-test."""
         try:
             group1_data = self.df[self.df[group_col] == group1][value_col].dropna()
@@ -342,13 +335,12 @@ class StatisticalAnalyzer:
         else:
             return "Large effect"
 
-    def _anova_test(self, group_col: str, value_col: str) -> Dict:
+    def _anova_test(self, group_col: str, value_col: str) -> dict:
         """Perform one-way ANOVA test."""
         try:
             groups = self.df[group_col].unique()
             group_data = [
-                self.df[self.df[group_col] == group][value_col].dropna()
-                for group in groups
+                self.df[self.df[group_col] == group][value_col].dropna() for group in groups
             ]
 
             # Check if all groups have sufficient data
@@ -361,8 +353,7 @@ class StatisticalAnalyzer:
             # Calculate effect size (eta-squared)
             total_ss = sum((data - data.mean()) ** 2 for data in group_data)
             between_ss = sum(
-                len(data) * (data.mean() - self.df[value_col].mean()) ** 2
-                for data in group_data
+                len(data) * (data.mean() - self.df[value_col].mean()) ** 2 for data in group_data
             )
             eta_squared = between_ss / total_ss if total_ss > 0 else 0
 
@@ -376,7 +367,7 @@ class StatisticalAnalyzer:
                 "effect_interpretation": self._interpret_eta_squared(eta_squared),
                 "group_stats": {
                     group: {"n": len(data), "mean": data.mean(), "std": data.std()}
-                    for group, data in zip(groups, group_data)
+                    for group, data in zip(groups, group_data, strict=True)
                 },
             }
         except Exception as e:
@@ -391,7 +382,7 @@ class StatisticalAnalyzer:
         else:
             return "Large effect"
 
-    def _chi_square_test(self, var1: str, var2: str) -> Dict:
+    def _chi_square_test(self, var1: str, var2: str) -> dict:
         """Perform chi-square test of independence."""
         try:
             if var1 not in self.categorical_cols or var2 not in self.categorical_cols:
@@ -432,7 +423,7 @@ class StatisticalAnalyzer:
         else:
             return "Large effect"
 
-    def distribution_analysis(self, columns: Optional[List[str]] = None) -> Dict:
+    def distribution_analysis(self, columns: list[str] | None = None) -> dict:
         """Analyze distribution characteristics of numeric columns."""
         if columns is None:
             columns = self.numeric_cols
@@ -440,7 +431,7 @@ class StatisticalAnalyzer:
         distribution_results = {}
 
         for col in columns:
-            if col in self.df.columns and self.df[col].dtype in ["int64", "float64"]:
+            if col in self.df.columns and is_numeric_column(self.df[col]):
                 col_data = self.df[col].dropna()
                 if len(col_data) == 0:
                     continue
@@ -449,23 +440,17 @@ class StatisticalAnalyzer:
                     # Basic distribution stats
                     mean = col_data.mean()
                     median = col_data.median()
-                    mode = (
-                        col_data.mode().iloc[0] if not col_data.mode().empty else None
-                    )
+                    mode = col_data.mode().iloc[0] if not col_data.mode().empty else None
 
                     # Skewness and kurtosis
                     skewness = col_data.skew()
                     kurtosis = col_data.kurtosis()
 
                     # Percentiles
-                    percentiles = col_data.quantile(
-                        [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95]
-                    )
+                    percentiles = col_data.quantile([0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95])
 
                     # Distribution shape assessment
-                    shape_assessment = self._assess_distribution_shape(
-                        skewness, kurtosis
-                    )
+                    shape_assessment = self._assess_distribution_shape(skewness, kurtosis)
 
                     distribution_results[col] = {
                         "central_tendency": {
@@ -498,12 +483,12 @@ class StatisticalAnalyzer:
         skew_assessment = (
             "symmetric"
             if abs(skewness) < 0.5
-            else "right-skewed" if skewness > 0.5 else "left-skewed"
+            else "right-skewed"
+            if skewness > 0.5
+            else "left-skewed"
         )
         kurt_assessment = (
-            "normal"
-            if abs(kurtosis) < 2
-            else "heavy-tailed" if kurtosis > 2 else "light-tailed"
+            "normal" if abs(kurtosis) < 2 else "heavy-tailed" if kurtosis > 2 else "light-tailed"
         )
 
         return f"{skew_assessment}, {kurt_assessment}"
@@ -513,11 +498,9 @@ class StatisticalAnalyzer:
         report_parts = []
 
         # Basic info
-        report_parts.append(f"STATISTICAL ANALYSIS REPORT")
+        report_parts.append("STATISTICAL ANALYSIS REPORT")
         report_parts.append("=" * 50)
-        report_parts.append(
-            f"Dataset: {len(self.df)} rows × {len(self.df.columns)} columns"
-        )
+        report_parts.append(f"Dataset: {len(self.df)} rows × {len(self.df.columns)} columns")
         report_parts.append(f"Numeric columns: {len(self.numeric_cols)}")
         report_parts.append(f"Categorical columns: {len(self.categorical_cols)}")
         report_parts.append("")
@@ -570,7 +553,7 @@ class StatisticalAnalyzer:
         return "\n".join(report_parts)
 
 
-def quick_stats(df: pd.DataFrame, columns: Optional[List[str]] = None) -> Dict:
+def quick_stats(df: pd.DataFrame, columns: list[str] | None = None) -> dict:
     """Quick statistical summary for a dataframe."""
     analyzer = StatisticalAnalyzer(df)
     return analyzer.descriptive_statistics(columns)
@@ -583,15 +566,13 @@ def correlation_matrix(df: pd.DataFrame, method: str = "pearson") -> pd.DataFram
 
 
 def detect_outliers(
-    df: pd.DataFrame, columns: Optional[List[str]] = None, method: str = "iqr"
-) -> Dict:
+    df: pd.DataFrame, columns: list[str] | None = None, method: str = "iqr"
+) -> dict:
     """Quick outlier detection."""
     analyzer = StatisticalAnalyzer(df)
     return analyzer.outlier_detection(columns, method)
 
-    def _paired_t_test(
-        self, group_col: str, value_col: str, group1: str, group2: str
-    ) -> Dict:
+    def _paired_t_test(self, group_col: str, value_col: str, group1: str, group2: str) -> dict:
         """Perform paired t-test."""
         try:
             # This would require paired data - for now return error
@@ -599,9 +580,7 @@ def detect_outliers(
         except Exception as e:
             return {"error": str(e)}
 
-    def _mann_whitney_test(
-        self, group_col: str, value_col: str, group1: str, group2: str
-    ) -> Dict:
+    def _mann_whitney_test(self, group_col: str, value_col: str, group1: str, group2: str) -> dict:
         """Perform Mann-Whitney U test."""
         try:
             group1_data = self.df[self.df[group_col] == group1][value_col].dropna()
@@ -611,9 +590,7 @@ def detect_outliers(
                 return {"error": "Insufficient data for Mann-Whitney test"}
 
             # Perform Mann-Whitney U test
-            u_stat, p_val = stats.mannwhitneyu(
-                group1_data, group2_data, alternative="two-sided"
-            )
+            u_stat, p_val = stats.mannwhitneyu(group1_data, group2_data, alternative="two-sided")
 
             return {
                 "test_type": "Mann-Whitney U test",
@@ -627,13 +604,12 @@ def detect_outliers(
         except Exception as e:
             return {"error": str(e)}
 
-    def _kruskal_wallis_test(self, group_col: str, value_col: str) -> Dict:
+    def _kruskal_wallis_test(self, group_col: str, value_col: str) -> dict:
         """Perform Kruskal-Wallis H test."""
         try:
             groups = self.df[group_col].unique()
             group_data = [
-                self.df[self.df[group_col] == group][value_col].dropna()
-                for group in groups
+                self.df[self.df[group_col] == group][value_col].dropna() for group in groups
             ]
 
             # Check if all groups have sufficient data
@@ -651,7 +627,7 @@ def detect_outliers(
                 "significant": p_val < 0.05,
                 "group_stats": {
                     group: {"n": len(data), "median": data.median()}
-                    for group, data in zip(groups, group_data)
+                    for group, data in zip(groups, group_data, strict=True)
                 },
             }
         except Exception as e:

@@ -36,11 +36,12 @@ test-fast:  ## Run tests excluding LLM integration
 	pytest tests/ -v -m "not llm"
 
 lint:  ## Run linting checks
-	flake8 askpandas/ tests/
-	black --check askpandas/ tests/
+	ruff check .
+	ruff format --check .
 
-format:  ## Format code with black
-	black askpandas/ tests/
+format:  ## Format code with ruff
+	ruff check --fix .
+	ruff format .
 
 type-check:  ## Run type checking with mypy
 	mypy askpandas/
@@ -51,7 +52,7 @@ check-all:  ## Run all code quality checks
 	$(MAKE) test
 
 build:  ## Build distribution packages
-	python setup.py sdist bdist_wheel
+	python -m build
 
 dist:  ## Build and upload to PyPI (requires twine)
 	$(MAKE) build

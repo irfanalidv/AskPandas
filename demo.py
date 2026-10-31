@@ -4,11 +4,13 @@ AskPandas Demo Script
 Showcases the main features of the AskPandas library
 """
 
-import askpandas as ap
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
 import random
+from datetime import datetime, timedelta
+
+import numpy as np
+import pandas as pd
+
+import askpandas as ap
 
 
 def create_sample_data():
@@ -46,11 +48,11 @@ def create_sample_data():
         customer_data.append(
             {
                 "customer_id": i + 1,
-                "name": f"Customer {i+1}",
+                "name": f"Customer {i + 1}",
                 "segment": random.choice(["Premium", "Standard", "Basic"]),
-                "join_date": (
-                    datetime.now() - timedelta(days=random.randint(30, 365))
-                ).strftime("%Y-%m-%d"),
+                "join_date": (datetime.now() - timedelta(days=random.randint(30, 365))).strftime(
+                    "%Y-%m-%d"
+                ),
                 "total_purchases": random.randint(1, 20),
             }
         )
@@ -58,9 +60,7 @@ def create_sample_data():
     customer_df = pd.DataFrame(customer_data)
     customer_df.to_csv("demo_customers.csv", index=False)
 
-    print(
-        f"✅ Created {len(sales_df)} sales records and {len(customer_df)} customer records"
-    )
+    print(f"✅ Created {len(sales_df)} sales records and {len(customer_df)} customer records")
     return sales_df, customer_df
 
 
@@ -76,9 +76,7 @@ def setup_llm():
             print("✅ Ollama LLM configured successfully (Mistral model)")
             return True
         else:
-            print(
-                "⚠️  Ollama is not running. Please start Ollama and pull the mistral model."
-            )
+            print("⚠️  Ollama is not running. Please start Ollama and pull the mistral model.")
             print("   Run: ollama serve && ollama pull mistral")
             return False
     except Exception as e:
@@ -232,7 +230,7 @@ def demo_utilities():
     # Column info
     print("\n📋 Column Information:")
     col_info = sales.get_column_info("revenue")
-    print(f"   Revenue column:")
+    print("   Revenue column:")
     print(f"     Type: {col_info['dtype']}")
     print(f"     Min: {col_info['min']:.2f}")
     print(f"     Max: {col_info['max']:.2f}")

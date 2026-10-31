@@ -4,9 +4,10 @@ Simple AskPandas Demo - Easy to Use!
 No complex setup required - just run this script!
 """
 
-import askpandas as ap
-import pandas as pd
 import numpy as np
+import pandas as pd
+
+import askpandas as ap
 
 
 def create_simple_data():

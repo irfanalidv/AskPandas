@@ -1,11 +1,15 @@
-import pandas as pd
-from typing import Any, Dict, List, Optional, Union
-from ..utils.helpers import (
-    validate_dataframe,
-    get_dataframe_summary,
-    clean_column_names,
-)
+from typing import Any
+
 import numpy as np
+import pandas as pd
+
+from ..utils.helpers import (
+    clean_column_names,
+    get_dataframe_summary,
+    is_numeric_column,
+    is_text_column,
+    validate_dataframe,
+)
 
 
 class AskDataFrame:
@@ -50,12 +54,12 @@ class AskDataFrame:
 
         info_str = f"""
 DataFrame Info:
-- Shape: {summary['shape']}
-- Columns: {summary['columns']}
-- Data types: {summary['dtypes']}
-- Memory usage: {summary['memory_usage'] / 1024 / 1024:.2f} MB
-- Null counts: {summary['null_counts']}
-- Unique counts: {summary['unique_counts']}
+- Shape: {summary["shape"]}
+- Columns: {summary["columns"]}
+- Data types: {summary["dtypes"]}
+- Memory usage: {summary["memory_usage"] / 1024 / 1024:.2f} MB
+- Null counts: {summary["null_counts"]}
+- Unique counts: {summary["unique_counts"]}
 - Sample data (first 3 rows):
 {self.df.head(3).to_string()}
 """
@@ -77,11 +81,11 @@ DataFrame Info:
         """Get the shape of the DataFrame."""
         return self.df.shape
 
-    def columns(self) -> List[str]:
+    def columns(self) -> list[str]:
         """Get the column names."""
         return list(self.df.columns)
 
-    def dtypes(self) -> Dict[str, str]:
+    def dtypes(self) -> dict[str, str]:
         """Get the data types of columns."""
         return dict(self.df.dtypes)
 
@@ -101,13 +105,11 @@ DataFrame Info:
         """Fill null values."""
         return AskDataFrame(self.df.fillna(value, **kwargs))
 
-    def sort_values(self, by: Union[str, List[str]], **kwargs) -> "AskDataFrame":
+    def sort_values(self, by: str | list[str], **kwargs) -> "AskDataFrame":
         """Sort DataFrame by values."""
         return AskDataFrame(self.df.sort_values(by, **kwargs))
 
-    def groupby(
-        self, by: Union[str, List[str]], **kwargs
-    ) -> pd.core.groupby.DataFrameGroupBy:
+    def groupby(self, by: str | list[str], **kwargs) -> pd.core.groupby.DataFrameGroupBy:
         """Group DataFrame by columns."""
         return self.df.groupby(by, **kwargs)
 
@@ -139,22 +141,18 @@ DataFrame Info:
         except Exception as e:
             return f"Failed to save DataFrame: {e}"
 
-    def get_summary_stats(self) -> Dict[str, Any]:
+    def get_summary_stats(self) -> dict[str, Any]:
         """Get comprehensive summary statistics."""
         summary = get_dataframe_summary(self.df)
 
         # Add additional statistics
         summary.update(
             {
-                "numeric_columns": list(
-                    self.df.select_dtypes(include=[np.number]).columns
-                ),
+                "numeric_columns": list(self.df.select_dtypes(include=[np.number]).columns),
                 "categorical_columns": list(
-                    self.df.select_dtypes(include=["object"]).columns
+                    self.df.select_dtypes(include=["object", "string"]).columns
                 ),
-                "datetime_columns": list(
-                    self.df.select_dtypes(include=["datetime"]).columns
-                ),
+                "datetime_columns": list(self.df.select_dtypes(include=["datetime"]).columns),
                 "total_memory_mb": summary["memory_usage"] / 1024 / 1024,
                 "duplicate_rows": self.df.duplicated().sum(),
                 "unique_rows": self.df.drop_duplicates().shape[0],
@@ -163,7 +161,7 @@ DataFrame Info:
 
         return summary
 
-    def get_column_info(self, column: str) -> Dict[str, Any]:
+    def get_column_info(self, column: str) -> dict[str, Any]:
         """Get detailed information about a specific column."""
         if column not in self.df.columns:
             raise ValueError(f"Column '{column}' not found in DataFrame")
@@ -180,7 +178,7 @@ DataFrame Info:
             "memory_usage": col_data.memory_usage(deep=True),
         }
 
-        if col_type in ["int64", "float64"]:
+        if is_numeric_column(col_data):
             info.update(
                 {
                     "min": col_data.min(),
@@ -190,13 +188,11 @@ DataFrame Info:
                     "std": col_data.std(),
                 }
             )
-        elif col_type == "object":
+        elif is_text_column(col_data):
             info.update(
                 {
                     "top_values": col_data.value_counts().head(5).to_dict(),
-                    "most_common": (
-                        col_data.mode().iloc[0] if not col_data.mode().empty else None
-                    ),
+                    "most_common": (col_data.mode().iloc[0] if not col_data.mode().empty else None),
                 }
             )
 

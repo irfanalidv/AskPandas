@@ -1,8 +1,9 @@
 include README.md
 include LICENSE
+include CHANGELOG.md
+include CITATION.cff
 include fake_sample.csv
-include pyproject.toml
-include requirements.txt
-recursive-include askpandas *.py
+include askpandas/py.typed
 recursive-include tests *.py
 recursive-include examples *.py
+global-exclude *.py[cod] __pycache__ .DS_Store

@@ -1,52 +1,46 @@
-import os
-import requests
-from .base import BaseLLM
+"""Hugging Face Inference Providers client.
+
+The legacy ``api-inference.huggingface.co`` endpoint used by askpandas <= 0.1.1 no
+longer resolves; Hugging Face now serves hosted models through the OpenAI-compatible
+router at ``https://router.huggingface.co/v1``.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from .openai_compatible import OpenAICompatibleLLM
+
+HF_ROUTER_URL = "https://router.huggingface.co/v1"
 
 
-class HuggingFaceLLM(BaseLLM):
+class HuggingFaceLLM(OpenAICompatibleLLM):
+    """LLM client for Hugging Face Inference Providers (online).
+
+    Args:
+        model_name: A chat model served by the router, e.g.
+            ``"Qwen/Qwen2.5-Coder-7B-Instruct"`` or ``"meta-llama/Llama-3.1-8B-Instruct"``.
+        api_key: Hugging Face token. Defaults to the ``HF_TOKEN`` or ``HF_API_KEY``
+            environment variable.
+        **kwargs: Passed to :class:`OpenAICompatibleLLM` (``temperature``, ``max_tokens``...).
+
+    Raises:
+        ValueError: If no token is provided or found in the environment.
+    """
+
     def __init__(
-        self, model_name: str = "HuggingFaceH4/zephyr-7b-beta", api_key: str = None
-    ):
-        """Initialize Hugging Face LLM client using the Inference API (online)."""
-        self.model_name = model_name
-        self.api_key = api_key or os.getenv("HF_API_KEY")
+        self,
+        model_name: str = "Qwen/Qwen2.5-Coder-7B-Instruct",
+        api_key: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        kwargs.setdefault("base_url", HF_ROUTER_URL)
+        kwargs.setdefault("api_key_env", ("HF_TOKEN", "HF_API_KEY"))
+        super().__init__(model_name, api_key=api_key, **kwargs)
         if not self.api_key:
-            # Prompt the user for their API key
-            try:
-                self.api_key = input("Enter your Hugging Face API key: ").strip()
-            except EOFError:
-                raise RuntimeError("Hugging Face API key is required to use this LLM.")
-            os.environ["HF_API_KEY"] = self.api_key
-        self.api_url = f"https://api-inference.huggingface.co/models/{self.model_name}"
-        self.headers = (
-            {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-        )
-
-    def generate(self, prompt: str) -> str:
-        """Generate response using Hugging Face Inference API."""
-        payload = {"inputs": prompt}
-        try:
-            response = requests.post(
-                self.api_url, headers=self.headers, json=payload, timeout=60
+            raise ValueError(
+                "A Hugging Face token is required. Pass api_key=... or set HF_TOKEN "
+                "(create one at https://huggingface.co/settings/tokens)."
             )
-            response.raise_for_status()
-            data = response.json()
-            # The response format may vary by model; handle common cases
-            if isinstance(data, list) and "generated_text" in data[0]:
-                return data[0]["generated_text"][len(prompt) :].strip()
-            elif isinstance(data, dict) and "generated_text" in data:
-                return data["generated_text"][len(prompt) :].strip()
-            else:
-                return str(data)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to generate response from Hugging Face API: {e}"
-            )
-
-    def is_available(self) -> bool:
-        """Check if the API is reachable."""
-        try:
-            response = requests.get(self.api_url, headers=self.headers, timeout=5)
-            return response.status_code == 200
-        except Exception:
-            return False
+        # Kept for backward compatibility with askpandas <= 0.1.1
+        self.api_url = f"{self.base_url}/chat/completions"

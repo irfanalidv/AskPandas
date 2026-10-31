@@ -3,13 +3,14 @@ Advanced data quality assessment and cleaning utilities for AskPandas.
 Provides comprehensive data quality analysis and automated cleaning capabilities.
 """
 
-import pandas as pd
-import numpy as np
-from typing import Dict, List, Tuple, Optional, Union, Any
-import re
 from datetime import datetime
-import warnings
+from typing import Any
+
+import numpy as np
+import pandas as pd
 from scipy import stats
+
+from .helpers import is_numeric_column, is_text_column
 
 
 class DataQualityAnalyzer:
@@ -21,7 +22,7 @@ class DataQualityAnalyzer:
         self.original_shape = df.shape
         self.quality_report = {}
 
-    def comprehensive_quality_assessment(self) -> Dict[str, Any]:
+    def comprehensive_quality_assessment(self) -> dict[str, Any]:
         """Perform comprehensive data quality assessment."""
         self.quality_report = {
             "basic_info": self._get_basic_info(),
@@ -43,7 +44,7 @@ class DataQualityAnalyzer:
 
         return self.quality_report
 
-    def _get_basic_info(self) -> Dict[str, Any]:
+    def _get_basic_info(self) -> dict[str, Any]:
         """Get basic information about the dataset."""
         return {
             "shape": self.df.shape,
@@ -53,15 +54,13 @@ class DataQualityAnalyzer:
             "row_count": len(self.df),
             "numeric_columns": len(self.df.select_dtypes(include=[np.number]).columns),
             "categorical_columns": len(
-                self.df.select_dtypes(include=["object", "category"]).columns
+                self.df.select_dtypes(include=["object", "string", "category"]).columns
             ),
-            "datetime_columns": len(
-                self.df.select_dtypes(include=["datetime"]).columns
-            ),
+            "datetime_columns": len(self.df.select_dtypes(include=["datetime"]).columns),
             "boolean_columns": len(self.df.select_dtypes(include=["bool"]).columns),
         }
 
-    def _analyze_missing_data(self) -> Dict[str, Any]:
+    def _analyze_missing_data(self) -> dict[str, Any]:
         """Analyze missing data patterns."""
         missing_info = {}
 
@@ -90,7 +89,7 @@ class DataQualityAnalyzer:
 
         return missing_info
 
-    def _identify_missing_patterns(self) -> List[Dict[str, Any]]:
+    def _identify_missing_patterns(self) -> list[dict[str, Any]]:
         """Identify patterns in missing data."""
         patterns = []
 
@@ -108,7 +107,7 @@ class DataQualityAnalyzer:
         # Check for columns with same missing pattern
         missing_matrix = self.df.isnull()
         for i, col1 in enumerate(self.df.columns):
-            for j, col2 in enumerate(self.df.columns[i + 1 :], i + 1):
+            for col2 in self.df.columns[i + 1 :]:
                 if missing_matrix[col1].equals(missing_matrix[col2]):
                     patterns.append(
                         {
@@ -137,7 +136,7 @@ class DataQualityAnalyzer:
 
         return patterns
 
-    def _analyze_duplicates(self) -> Dict[str, Any]:
+    def _analyze_duplicates(self) -> dict[str, Any]:
         """Analyze duplicate data."""
         duplicate_info = {}
 
@@ -161,9 +160,7 @@ class DataQualityAnalyzer:
                 {
                     "type": "exact_duplicates",
                     "count": total_duplicates,
-                    "severity": (
-                        "high" if total_duplicates > len(self.df) * 0.1 else "medium"
-                    ),
+                    "severity": ("high" if total_duplicates > len(self.df) * 0.1 else "medium"),
                 }
             )
 
@@ -183,7 +180,7 @@ class DataQualityAnalyzer:
 
         return duplicate_info
 
-    def _find_potential_duplicates(self) -> List[Tuple[int, int]]:
+    def _find_potential_duplicates(self) -> list[tuple[int, int]]:
         """Find potential duplicates based on similarity."""
         potential_dups = []
 
@@ -193,9 +190,7 @@ class DataQualityAnalyzer:
         if len(numeric_cols) > 0:
             # Use a simple similarity measure
             for i in range(len(self.df)):
-                for j in range(
-                    i + 1, min(i + 100, len(self.df))
-                ):  # Check next 100 rows
+                for j in range(i + 1, min(i + 100, len(self.df))):  # Check next 100 rows
                     similarity = self._calculate_row_similarity(i, j, numeric_cols)
                     if similarity > 0.95:  # 95% similarity threshold
                         potential_dups.append((i, j))
@@ -203,7 +198,7 @@ class DataQualityAnalyzer:
         return potential_dups
 
     def _calculate_row_similarity(
-        self, row1_idx: int, row2_idx: int, numeric_cols: List[str]
+        self, row1_idx: int, row2_idx: int, numeric_cols: list[str]
     ) -> float:
         """Calculate similarity between two rows."""
         if len(numeric_cols) == 0:
@@ -222,7 +217,7 @@ class DataQualityAnalyzer:
 
         return dot_product / (norm1 * norm2)
 
-    def _analyze_data_types(self) -> Dict[str, Any]:
+    def _analyze_data_types(self) -> dict[str, Any]:
         """Analyze data types and suggest optimizations."""
         type_info = {}
 
@@ -233,9 +228,7 @@ class DataQualityAnalyzer:
         memory_by_type = {}
         for dtype in self.df.dtypes.unique():
             cols = self.df.select_dtypes(include=[dtype]).columns
-            memory_by_type[str(dtype)] = (
-                self.df[cols].memory_usage(deep=True).sum() / 1024 / 1024
-            )
+            memory_by_type[str(dtype)] = self.df[cols].memory_usage(deep=True).sum() / 1024 / 1024
         type_info["memory_by_type"] = memory_by_type
 
         # Type optimization suggestions
@@ -259,9 +252,7 @@ class DataQualityAnalyzer:
 
         return type_info
 
-    def _suggest_type_optimization(
-        self, col: str, current_type: str
-    ) -> Optional[Dict[str, Any]]:
+    def _suggest_type_optimization(self, col: str, current_type: str) -> dict[str, Any] | None:
         """Suggest type optimization for a column."""
         if current_type.startswith("int"):
             # Check if we can use smaller int types
@@ -341,7 +332,7 @@ class DataQualityAnalyzer:
                         "reason": f"Precision loss is {precision_loss:.2e}, can use float32",
                     }
 
-        elif current_type == "object":
+        elif is_text_column(self.df[col]):
             # Check if we can convert to category
             unique_ratio = self.df[col].nunique() / len(self.df)
             if unique_ratio < 0.5:  # Less than 50% unique values
@@ -361,7 +352,7 @@ class DataQualityAnalyzer:
 
         return None
 
-    def _analyze_value_ranges(self) -> Dict[str, Any]:
+    def _analyze_value_ranges(self) -> dict[str, Any]:
         """Analyze value ranges and identify potential issues."""
         range_info = {}
 
@@ -382,20 +373,14 @@ class DataQualityAnalyzer:
 
         # Categorical column value counts
         categorical_counts = {}
-        for col in self.df.select_dtypes(include=["object", "category"]).columns:
+        for col in self.df.select_dtypes(include=["object", "string", "category"]).columns:
             value_counts = self.df[col].value_counts()
             categorical_counts[col] = {
                 "unique_values": len(value_counts),
                 "most_common": value_counts.index[0] if len(value_counts) > 0 else None,
-                "most_common_count": (
-                    value_counts.iloc[0] if len(value_counts) > 0 else 0
-                ),
-                "least_common": (
-                    value_counts.index[-1] if len(value_counts) > 0 else None
-                ),
-                "least_common_count": (
-                    value_counts.iloc[-1] if len(value_counts) > 0 else 0
-                ),
+                "most_common_count": (value_counts.iloc[0] if len(value_counts) > 0 else 0),
+                "least_common": (value_counts.index[-1] if len(value_counts) > 0 else None),
+                "least_common_count": (value_counts.iloc[-1] if len(value_counts) > 0 else 0),
             }
         range_info["categorical_counts"] = categorical_counts
 
@@ -404,7 +389,7 @@ class DataQualityAnalyzer:
 
         # Check for suspicious patterns
         for col in self.df.columns:
-            if self.df[col].dtype in ["int64", "float64"]:
+            if is_numeric_column(self.df[col]):
                 col_data = self.df[col].dropna()
                 if len(col_data) > 0:
                     # Check for all zeros or all same values
@@ -428,7 +413,7 @@ class DataQualityAnalyzer:
 
         return range_info
 
-    def _analyze_consistency(self) -> Dict[str, Any]:
+    def _analyze_consistency(self) -> dict[str, Any]:
         """Analyze data consistency across columns."""
         consistency_info = {}
 
@@ -437,7 +422,7 @@ class DataQualityAnalyzer:
 
         # Example: age should be positive
         for col in self.df.columns:
-            if "age" in col.lower() and self.df[col].dtype in ["int64", "float64"]:
+            if "age" in col.lower() and is_numeric_column(self.df[col]):
                 negative_ages = self.df[self.df[col] < 0][col]
                 if len(negative_ages) > 0:
                     logical_inconsistencies.append(
@@ -451,7 +436,7 @@ class DataQualityAnalyzer:
 
         # Example: dates should be in reasonable range
         for col in self.df.columns:
-            if self.df[col].dtype == "object":
+            if is_text_column(self.df[col]):
                 # Try to detect date columns
                 try:
                     pd.to_datetime(self.df[col].head(100))
@@ -480,7 +465,7 @@ class DataQualityAnalyzer:
         # Check for format consistency
         format_inconsistencies = []
 
-        for col in self.df.select_dtypes(include=["object"]).columns:
+        for col in self.df.select_dtypes(include=["object", "string"]).columns:
             # Check for mixed formats
             sample_values = self.df[col].dropna().head(100)
             if len(sample_values) > 0:
@@ -507,7 +492,7 @@ class DataQualityAnalyzer:
 
         return consistency_info
 
-    def _detect_outliers(self) -> Dict[str, Any]:
+    def _detect_outliers(self) -> dict[str, Any]:
         """Detect outliers using multiple methods."""
         outlier_info = {}
 
@@ -550,9 +535,7 @@ class DataQualityAnalyzer:
         score = 100.0
 
         # Deduct points for missing data
-        missing_percentage = self.quality_report["missing_data"][
-            "total_missing_percentage"
-        ]
+        missing_percentage = self.quality_report["missing_data"]["total_missing_percentage"]
         score -= min(missing_percentage * 2, 30)  # Max 30 points deduction
 
         # Deduct points for duplicates
@@ -571,16 +554,14 @@ class DataQualityAnalyzer:
 
         # Deduct points for outliers (if excessive)
         outlier_penalty = 0
-        for col, outliers in self.quality_report["outliers"].items():
-            if (
-                "iqr" in outliers and outliers["iqr"]["percentage"] > 10
-            ):  # More than 10% outliers
+        for outliers in self.quality_report["outliers"].values():
+            if "iqr" in outliers and outliers["iqr"]["percentage"] > 10:  # More than 10% outliers
                 outlier_penalty += 5
         score -= min(outlier_penalty, 15)  # Max 15 points deduction
 
         return max(score, 0.0)  # Ensure score doesn't go below 0
 
-    def _generate_recommendations(self) -> List[Dict[str, Any]]:
+    def _generate_recommendations(self) -> list[dict[str, Any]]:
         """Generate actionable recommendations for data quality improvement."""
         recommendations = []
 
@@ -648,7 +629,7 @@ class DataQualityAnalyzer:
                 {
                     "priority": "medium",
                     "category": "outliers",
-                    "action": f'Investigate outliers in columns: {", ".join(outlier_issues[:3])}',
+                    "action": f"Investigate outliers in columns: {', '.join(outlier_issues[:3])}",
                     "impact": "Data quality and analysis robustness",
                 }
             )
@@ -689,7 +670,7 @@ class DataQualityAnalyzer:
 
         # Duplicate analysis
         duplicates = self.quality_report["duplicates"]
-        report_parts.append(f"\nDUPLICATE ANALYSIS")
+        report_parts.append("\nDUPLICATE ANALYSIS")
         report_parts.append("-" * 30)
         report_parts.append(
             f"Total duplicate rows: {duplicates['total_duplicates']:,} ({duplicates['duplicate_percentage']:.1f}%)"
@@ -698,7 +679,7 @@ class DataQualityAnalyzer:
         # Data type analysis
         data_types = self.quality_report["data_types"]
         if data_types["optimization_suggestions"]:
-            report_parts.append(f"\nDATA TYPE OPTIMIZATION")
+            report_parts.append("\nDATA TYPE OPTIMIZATION")
             report_parts.append("-" * 30)
             total_savings = sum(
                 s["memory_saving_mb"] for s in data_types["optimization_suggestions"]
@@ -706,7 +687,7 @@ class DataQualityAnalyzer:
             report_parts.append(f"Potential memory savings: {total_savings:.1f}MB")
 
             for suggestion in data_types["optimization_suggestions"][:5]:  # Show top 5
-                if 'new_type' in suggestion and 'current_type' in suggestion:
+                if "new_type" in suggestion and "current_type" in suggestion:
                     report_parts.append(
                         f"  {suggestion['column']}: {suggestion['current_type']} → {suggestion['new_type']} "
                         f"(save {suggestion['memory_saving_mb']:.1f}MB)"
@@ -714,11 +695,8 @@ class DataQualityAnalyzer:
 
         # Consistency issues
         consistency = self.quality_report["consistency"]
-        if (
-            consistency["logical_inconsistencies"]
-            or consistency["format_inconsistencies"]
-        ):
-            report_parts.append(f"\nCONSISTENCY ISSUES")
+        if consistency["logical_inconsistencies"] or consistency["format_inconsistencies"]:
+            report_parts.append("\nCONSISTENCY ISSUES")
             report_parts.append("-" * 30)
 
             for issue in consistency["logical_inconsistencies"]:
@@ -732,7 +710,7 @@ class DataQualityAnalyzer:
         # Recommendations
         recommendations = self.quality_report["recommendations"]
         if recommendations:
-            report_parts.append(f"\nRECOMMENDATIONS")
+            report_parts.append("\nRECOMMENDATIONS")
             report_parts.append("-" * 30)
             for i, rec in enumerate(recommendations, 1):
                 report_parts.append(f"{i}. [{rec['priority'].upper()}] {rec['action']}")
@@ -767,20 +745,18 @@ class DataCleaner:
 
     def _remove_leading_trailing_whitespace(self):
         """Remove leading and trailing whitespace from string columns."""
-        for col in self.df.select_dtypes(include=["object"]).columns:
-            if self.df[col].dtype == "object":
+        for col in self.df.select_dtypes(include=["object", "string"]).columns:
+            if is_text_column(self.df[col]):
                 original_nulls = self.df[col].isnull().sum()
                 self.df[col] = self.df[col].str.strip()
                 new_nulls = self.df[col].isnull().sum()
 
                 if new_nulls > original_nulls:
-                    self.cleaning_log.append(
-                        f"Warning: Converting empty strings to NaN in {col}"
-                    )
+                    self.cleaning_log.append(f"Warning: Converting empty strings to NaN in {col}")
 
     def _standardize_case(self):
         """Standardize case for categorical columns."""
-        for col in self.df.select_dtypes(include=["object"]).columns:
+        for col in self.df.select_dtypes(include=["object", "string"]).columns:
             # Check if column contains mixed case
             sample_values = self.df[col].dropna().head(100)
             if len(sample_values) > 0:
@@ -788,20 +764,16 @@ class DataCleaner:
                 if 0 < case_variations < len(sample_values):
                     # Convert to title case for consistency
                     self.df[col] = self.df[col].str.title()
-                    self.cleaning_log.append(
-                        f"Standardized case to title case in {col}"
-                    )
+                    self.cleaning_log.append(f"Standardized case to title case in {col}")
 
     def _fix_data_types(self):
         """Automatically fix data types where possible."""
         for col in self.df.columns:
-            if self.df[col].dtype == "object":
+            if is_text_column(self.df[col]):
                 # Try to convert to numeric
                 try:
                     numeric_col = pd.to_numeric(self.df[col], errors="coerce")
-                    if (
-                        numeric_col.notna().sum() > len(self.df) * 0.8
-                    ):  # 80% conversion success
+                    if numeric_col.notna().sum() > len(self.df) * 0.8:  # 80% conversion success
                         self.df[col] = numeric_col
                         self.cleaning_log.append(f"Converted {col} to numeric type")
                         continue
@@ -811,9 +783,7 @@ class DataCleaner:
                 # Try to convert to datetime
                 try:
                     datetime_col = pd.to_datetime(self.df[col], errors="coerce")
-                    if (
-                        datetime_col.notna().sum() > len(self.df) * 0.8
-                    ):  # 80% conversion success
+                    if datetime_col.notna().sum() > len(self.df) * 0.8:  # 80% conversion success
                         self.df[col] = datetime_col
                         self.cleaning_log.append(f"Converted {col} to datetime type")
                         continue
@@ -851,18 +821,16 @@ class DataCleaner:
                 elif missing_percentage > 20:
                     # Remove rows with missing values if 20-50% missing
                     self.df = self.df.dropna(subset=[col])
-                    self.cleaning_log.append(
-                        f"Removed rows with missing values in {col}"
-                    )
+                    self.cleaning_log.append(f"Removed rows with missing values in {col}")
                 else:
                     # Fill missing values based on data type
-                    if self.df[col].dtype in ["int64", "float64"]:
+                    if is_numeric_column(self.df[col]):
                         fill_value = self.df[col].median()
                         self.df[col] = self.df[col].fillna(fill_value)
                         self.cleaning_log.append(
                             f"Filled missing values in {col} with median: {fill_value}"
                         )
-                    elif self.df[col].dtype == "object":
+                    elif is_text_column(self.df[col]):
                         fill_value = (
                             self.df[col].mode().iloc[0]
                             if not self.df[col].mode().empty
@@ -893,11 +861,11 @@ class DataCleaner:
                 self.df = self.df[~outliers_mask]
                 self.cleaning_log.append(f"Removed {outlier_count} outliers from {col}")
 
-    def get_cleaning_log(self) -> List[str]:
+    def get_cleaning_log(self) -> list[str]:
         """Get the cleaning operations log."""
         return self.cleaning_log
 
-    def get_cleaning_summary(self) -> Dict[str, Any]:
+    def get_cleaning_summary(self) -> dict[str, Any]:
         """Get a summary of cleaning operations."""
         return {
             "original_shape": self.df.shape,
@@ -907,15 +875,13 @@ class DataCleaner:
 
 
 # Convenience functions
-def assess_data_quality(df: pd.DataFrame) -> Dict[str, Any]:
+def assess_data_quality(df: pd.DataFrame) -> dict[str, Any]:
     """Quick data quality assessment."""
     analyzer = DataQualityAnalyzer(df)
     return analyzer.comprehensive_quality_assessment()
 
 
-def clean_dataframe(
-    df: pd.DataFrame, aggressive: bool = False
-) -> Tuple[pd.DataFrame, List[str]]:
+def clean_dataframe(df: pd.DataFrame, aggressive: bool = False) -> tuple[pd.DataFrame, list[str]]:
     """Quick data cleaning."""
     cleaner = DataCleaner(df)
     cleaned_df = cleaner.auto_clean(aggressive)

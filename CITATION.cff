@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "askpandas"
+abstract: "Ask questions about pandas DataFrames and CSV files in plain English, answered by LLM-generated pandas code"
+authors:
+  - family-names: Ali
+    given-names: Irfan
+version: "0.2.0"
+date-released: "2026-10-31"
+license: MIT
+repository-code: "https://github.com/irfanalidv/AskPandas"
+url: "https://pypi.org/project/askpandas/"

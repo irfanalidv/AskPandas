@@ -1,6 +1,17 @@
+import warnings
+from typing import Any
+
 import pandas as pd
-import numpy as np
-from typing import Any, Dict, List, Union
+
+
+def is_text_column(series: pd.Series) -> bool:
+    """True for text columns: ``object`` dtype (pandas < 3) or ``str``/``string`` dtype (pandas 3)."""
+    return pd.api.types.is_object_dtype(series) or isinstance(series.dtype, pd.StringDtype)
+
+
+def is_numeric_column(series: pd.Series) -> bool:
+    """True for integer/float columns (booleans excluded)."""
+    return pd.api.types.is_numeric_dtype(series) and not pd.api.types.is_bool_dtype(series)
 
 
 def validate_dataframe(df: Any) -> pd.DataFrame:
@@ -12,10 +23,10 @@ def validate_dataframe(df: Any) -> pd.DataFrame:
     elif isinstance(df, list):
         return pd.DataFrame(df)
     elif isinstance(df, str):
-        if df.endswith('.csv'):
-            return pd.read_csv(df, encoding='utf-8', low_memory=False)
-        elif df.endswith('.json'):
-            return pd.read_json(df, encoding='utf-8')
+        if df.endswith(".csv"):
+            return pd.read_csv(df, encoding="utf-8", low_memory=False)
+        elif df.endswith(".json"):
+            return pd.read_json(df, encoding="utf-8")
         else:
             raise ValueError("Unsupported file format. Use .csv or .json")
     else:
@@ -25,55 +36,57 @@ def validate_dataframe(df: Any) -> pd.DataFrame:
             raise ValueError(f"Failed to create DataFrame: {e}")
 
 
-def get_dataframe_summary(df: pd.DataFrame) -> Dict[str, Any]:
+def get_dataframe_summary(df: pd.DataFrame) -> dict[str, Any]:
     """Get comprehensive summary of a DataFrame."""
     return {
-        'shape': df.shape,
-        'columns': list(df.columns),
-        'dtypes': dict(df.dtypes),
-        'memory_usage': df.memory_usage(deep=True).sum(),
-        'null_counts': df.isnull().sum().to_dict(),
-        'unique_counts': {col: df[col].nunique() for col in df.columns},
-        'sample_data': df.head(3).to_dict('records')
+        "shape": df.shape,
+        "columns": list(df.columns),
+        "dtypes": dict(df.dtypes),
+        "memory_usage": df.memory_usage(deep=True).sum(),
+        "null_counts": df.isnull().sum().to_dict(),
+        "unique_counts": {col: df[col].nunique() for col in df.columns},
+        "sample_data": df.head(3).to_dict("records"),
     }
 
 
-def format_number(value: Union[int, float]) -> str:
+def format_number(value: int | float) -> str:
     """Format numbers for better readability."""
     if isinstance(value, (int, float)):
         if abs(value) >= 1e6:
-            return f"{value/1e6:.2f}M"
+            return f"{value / 1e6:.2f}M"
         elif abs(value) >= 1e3:
-            return f"{value/1e3:.2f}K"
+            return f"{value / 1e3:.2f}K"
         else:
             return f"{value:.2f}"
     return str(value)
 
 
-def detect_data_types(df: pd.DataFrame) -> Dict[str, str]:
+def detect_data_types(df: pd.DataFrame) -> dict[str, str]:
     """Detect and suggest optimal data types for DataFrame columns."""
     suggestions = {}
-    
+
     for col in df.columns:
-        if df[col].dtype == 'object':
+        if is_text_column(df[col]):
             # Check if it's actually numeric
             try:
-                pd.to_numeric(df[col], errors='raise')
-                suggestions[col] = 'numeric'
+                pd.to_numeric(df[col], errors="raise")
+                suggestions[col] = "numeric"
             except (ValueError, TypeError):
                 # Check if it's datetime
                 try:
-                    pd.to_datetime(df[col], errors='raise')
-                    suggestions[col] = 'datetime'
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", UserWarning)
+                        pd.to_datetime(df[col], errors="raise")
+                    suggestions[col] = "datetime"
                 except (ValueError, TypeError):
-                    suggestions[col] = 'categorical'
-        elif df[col].dtype == 'int64':
-            suggestions[col] = 'int'
-        elif df[col].dtype == 'float64':
-            suggestions[col] = 'float'
+                    suggestions[col] = "categorical"
+        elif pd.api.types.is_integer_dtype(df[col]):
+            suggestions[col] = "int"
+        elif pd.api.types.is_float_dtype(df[col]):
+            suggestions[col] = "float"
         else:
             suggestions[col] = str(df[col].dtype)
-    
+
     return suggestions
 
 
@@ -81,11 +94,10 @@ def clean_column_names(df: pd.DataFrame) -> pd.DataFrame:
     """Clean column names by removing special characters and standardizing format."""
     df_clean = df.copy()
     df_clean.columns = (
-        df_clean.columns
-        .str.lower()
-        .str.replace(r'[^\w\s]', '', regex=True)
-        .str.replace(r'\s+', '_', regex=True)
-        .str.strip('_')
+        df_clean.columns.str.lower()
+        .str.replace(r"[^\w\s]", "", regex=True)
+        .str.replace(r"\s+", "_", regex=True)
+        .str.strip("_")
     )
     return df_clean
 

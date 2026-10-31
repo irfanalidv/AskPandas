@@ -1,24 +1,29 @@
-import re
 import json
-from typing import List, Any, Dict, Optional, Union
-import pandas as pd
+import re
+import time
+import warnings
+from typing import Any
+
 import matplotlib.pyplot as plt
-import seaborn as sns
-from ..security.sandbox import SafeExecutor
-from ..visualization.charts import save_plot, set_plot_style
-from ..utils.helpers import get_dataframe_summary
 import numpy as np
+import pandas as pd
+import seaborn as sns
+
+from ..security.sandbox import SafeExecutor
+from ..utils.helpers import get_dataframe_summary, is_text_column
 
 
 class AskPandasEngine:
     """Advanced query processing engine with intelligent code generation."""
 
-    def __init__(self, llm, config: Optional[Dict] = None):
+    def __init__(self, llm, config: dict | None = None):
         """Initialize the query processing engine with an LLM."""
         self.llm = llm
         self.safe_executor = SafeExecutor()
         self.execution_history = []
         self.config = config or {}
+        # Base delay in seconds between retries after an LLM error (doubles each retry)
+        self.retry_backoff = float(self.config.get("retry_backoff", 1.0))
 
         # Enhanced prompt templates
         self.prompt_templates = {
@@ -29,7 +34,7 @@ class AskPandasEngine:
             "multi_dataframe": self._get_multi_dataframe_prompt(),
         }
 
-    def process_query(self, query: str, dataframes: List) -> Any:
+    def process_query(self, query: str, dataframes: list) -> Any:
         """Process a natural language query against dataframes with enhanced intelligence."""
         if not dataframes:
             raise ValueError("At least one dataframe must be provided.")
@@ -93,26 +98,26 @@ class AskPandasEngine:
 
         return "analysis"  # Default to general analysis
 
-    def _generate_enhanced_context(self, dataframes: List) -> str:
+    def _generate_enhanced_context(self, dataframes: list) -> str:
         """Generate comprehensive context with advanced data insights."""
         context_parts = []
 
-        for i, df in enumerate(dataframes):
-            summary = get_dataframe_summary(dataframes[i].df)
+        for i, ask_df in enumerate(dataframes):
+            summary = get_dataframe_summary(ask_df.df)
 
             # Enhanced data insights
             df_info = f"""
 DataFrame {i} (df{i}):
-- Shape: {summary['shape']}
-- Columns: {summary['columns']}
-- Data types: {summary['dtypes']}
-- Memory usage: {summary['memory_usage'] / 1024 / 1024:.2f} MB
-- Null counts: {summary['null_counts']}
-- Unique counts: {summary['unique_counts']}
-- Duplicate rows: {summary.get('duplicate_rows', 0)}
-- Numeric columns: {summary.get('numeric_columns', [])}
-- Categorical columns: {summary.get('categorical_columns', [])}
-- Date columns: {summary.get('datetime_columns', [])}
+- Shape: {summary["shape"]}
+- Columns: {summary["columns"]}
+- Data types: {summary["dtypes"]}
+- Memory usage: {summary["memory_usage"] / 1024 / 1024:.2f} MB
+- Null counts: {summary["null_counts"]}
+- Unique counts: {summary["unique_counts"]}
+- Duplicate rows: {summary.get("duplicate_rows", 0)}
+- Numeric columns: {summary.get("numeric_columns", [])}
+- Categorical columns: {summary.get("categorical_columns", [])}
+- Date columns: {summary.get("datetime_columns", [])}
 
 Sample data (first 3 rows):
 {dataframes[i].df.head(3).to_string()}
@@ -132,13 +137,15 @@ Data quality insights:
         missing_cells = df.isnull().sum().sum()
         return (missing_cells / total_cells) * 100 if total_cells > 0 else 0
 
-    def _suggest_data_types(self, df: pd.DataFrame) -> Dict[str, str]:
+    def _suggest_data_types(self, df: pd.DataFrame) -> dict[str, str]:
         """Suggest optimal data types for columns."""
         suggestions = {}
         for col in df.columns:
-            if df[col].dtype == "object":
+            if is_text_column(df[col]):
                 try:
-                    pd.to_datetime(df[col], errors="raise")
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", UserWarning)
+                        pd.to_datetime(df[col], errors="raise")
                     suggestions[col] = "datetime"
                 except (ValueError, TypeError):
                     try:
@@ -146,13 +153,13 @@ Data quality insights:
                         suggestions[col] = "numeric"
                     except (ValueError, TypeError):
                         suggestions[col] = "categorical"
-            elif df[col].dtype == "int64":
+            elif pd.api.types.is_integer_dtype(df[col]):
                 suggestions[col] = "int"
-            elif df[col].dtype == "float64":
+            elif pd.api.types.is_float_dtype(df[col]):
                 suggestions[col] = "float"
         return suggestions
 
-    def _detect_potential_outliers(self, df: pd.DataFrame) -> List[str]:
+    def _detect_potential_outliers(self, df: pd.DataFrame) -> list[str]:
         """Detect potential outliers in numeric columns."""
         outliers = []
         numeric_cols = df.select_dtypes(include=[np.number]).columns
@@ -170,13 +177,9 @@ Data quality insights:
 
         return outliers
 
-    def _generate_enhanced_prompt(
-        self, query: str, context: str, prompt_type: str
-    ) -> str:
+    def _generate_enhanced_prompt(self, query: str, context: str, prompt_type: str) -> str:
         """Generate enhanced prompts based on query type."""
-        base_prompt = self.prompt_templates.get(
-            prompt_type, self.prompt_templates["analysis"]
-        )
+        base_prompt = self.prompt_templates.get(prompt_type, self.prompt_templates["analysis"])
 
         # Add query-specific enhancements
         enhancements = self._get_query_enhancements(query)
@@ -216,7 +219,7 @@ Data quality insights:
 
     def _get_analysis_prompt(self) -> str:
         """Get the enhanced analysis prompt template."""
-        return """You are an expert Python data analyst specializing in pandas, numpy, matplotlib, and seaborn. 
+        return """You are an expert Python data analyst specializing in pandas, numpy, matplotlib, and seaborn.
 Generate clean, efficient, and production-ready Python code to answer user queries.
 
 CRITICAL INSTRUCTIONS:
@@ -366,9 +369,7 @@ GENERATE ONLY THE PYTHON CODE:
 # All necessary libraries are already available
 """
 
-    def _generate_code_with_retry(
-        self, prompt: str, query: str, max_retries: int = 3
-    ) -> str:
+    def _generate_code_with_retry(self, prompt: str, query: str, max_retries: int = 3) -> str:
         """Generate code with retry mechanism and fallback strategies."""
         for attempt in range(max_retries):
             try:
@@ -385,9 +386,9 @@ GENERATE ONLY THE PYTHON CODE:
 
             except Exception as e:
                 if attempt == max_retries - 1:
-                    raise RuntimeError(
-                        f"Failed to generate code after {max_retries} attempts: {e}"
-                    )
+                    raise RuntimeError(f"Failed to generate code after {max_retries} attempts: {e}")
+                # Back off before retrying (helps with rate limits / transient errors)
+                time.sleep(self.retry_backoff * (2**attempt))
                 continue
 
         # Fallback to basic code generation
@@ -395,44 +396,37 @@ GENERATE ONLY THE PYTHON CODE:
 
     def _extract_and_clean_code(self, response: str) -> str:
         """Extract and clean generated code from LLM response."""
-        # Try to extract code from markdown blocks
-        code_match = re.search(r"```python\n(.*?)```", response, re.DOTALL)
+        # Prefer the first fenced code block (```python, ```py or a bare ```)
+        code_match = re.search(r"```(?:python|py)?[ \t]*\n(.*?)```", response, re.DOTALL)
         if code_match:
-            code = code_match.group(1).strip()
+            code = code_match.group(1)
         else:
             # Fallback: assume entire response is code
-            code = response.strip()
+            code = response
 
-        # Clean up the code
-        code = self._clean_generated_code(code)
-        return code
+        return self._clean_generated_code(code)
 
     def _clean_generated_code(self, code: str) -> str:
-        """Clean and validate generated code."""
-        # Remove any markdown formatting
-        code = re.sub(r"^```python\s*", "", code)
-        code = re.sub(r"\s*```$", "", code)
+        """Remove markdown fences and import lines while preserving indentation."""
+        code = re.sub(r"^\s*```(?:python|py)?\s*", "", code)
+        code = re.sub(r"\s*```\s*$", "", code)
 
-        # Remove any explanatory text and import statements
-        lines = code.split("\n")
         cleaned_lines = []
-        for line in lines:
-            line = line.strip()
-            # Skip import statements and empty lines
-            if not line.startswith("import ") and not line.startswith("from ") and line:
-                cleaned_lines.append(line)
+        for line in code.splitlines():
+            stripped = line.strip()
+            # Libraries are pre-loaded in the sandbox; imports are not allowed there
+            if stripped.startswith(("import ", "from ")):
+                continue
+            cleaned_lines.append(line.rstrip())
 
-        # Add header comment
-        if cleaned_lines:
-            code = "# All necessary libraries are already available\n" + "\n".join(
-                cleaned_lines
-            )
-        else:
-            code = (
-                "# All necessary libraries are already available\n# No code generated"
-            )
+        body = "\n".join(cleaned_lines).strip("\n")
+        # Remove common leading indentation (e.g. code indented inside a reply)
+        import textwrap
 
-        return code.strip()
+        body = textwrap.dedent(body).strip()
+        if not body:
+            body = "# No code generated"
+        return "# All necessary libraries are already available\n" + body
 
     def _validate_generated_code(self, code: str) -> bool:
         """Validate that generated code meets quality standards."""
@@ -479,31 +473,16 @@ GENERATE ONLY THE PYTHON CODE:
         return prompt + hints
 
     def _generate_fallback_code(self, query: str) -> str:
-        """Generate basic fallback code when LLM generation fails."""
-        return f"""
-# Fallback code for: {query}
-# All necessary libraries are already available
-
-try:
-    # Basic data exploration
-    print("DataFrame shapes:")
-    for i, df in enumerate([df0, df1, df2][:len([df0, df1, df2])]):
-        if 'df{{i}}' in locals():
-            print(f"df{{i}}: {{df.shape}}")
-    
-    # Basic statistics
-    print("\\nBasic statistics for df0:")
-    if 'df0' in locals():
-        print(df0.describe())
-    
-    print("\\nQuery: {query}")
-    print("Note: This is fallback code. Please check your LLM configuration.")
-    
-except Exception as e:
-    print(f"Error in fallback code: {{e}}")
+        """Generate basic exploration code when LLM generation keeps failing."""
+        return f"""# Fallback code (the LLM did not return valid code)
+print("Shape of df0:", df0.shape)
+print("Basic statistics for df0:")
+print(df0.describe(include="all"))
+print("Query:", {query!r})
+print("Note: This is fallback output. Please check your LLM configuration.")
 """
 
-    def _execute_code_enhanced(self, code: str, dataframes: List) -> Any:
+    def _execute_code_enhanced(self, code: str, dataframes: list) -> Any:
         """Execute generated code with enhanced monitoring and error handling."""
         # Prepare execution environment
         local_vars = {f"df{i}": df.df for i, df in enumerate(dataframes)}
@@ -552,7 +531,9 @@ except Exception as e:
             if "timeout" in str(e).lower():
                 return "Execution timed out. Consider simplifying your query or using smaller datasets."
             elif "memory" in str(e).lower():
-                return "Out of memory. Consider using smaller datasets or more efficient operations."
+                return (
+                    "Out of memory. Consider using smaller datasets or more efficient operations."
+                )
             else:
                 return f"Execution failed: {str(e)}"
 
@@ -562,7 +543,7 @@ except Exception as e:
         code: str,
         result: Any,
         prompt_type: str,
-        error: Optional[str] = None,
+        error: str | None = None,
     ) -> None:
         """Store detailed execution history with metadata."""
         history_entry = {
@@ -580,11 +561,11 @@ except Exception as e:
 
         self.execution_history.append(history_entry)
 
-    def get_execution_history(self) -> List[Dict]:
+    def get_execution_history(self) -> list[dict]:
         """Get the history of executed queries with enhanced metadata."""
         return self.execution_history
 
-    def get_last_query(self) -> Optional[Dict]:
+    def get_last_query(self) -> dict | None:
         """Get the most recent query execution details."""
         return self.execution_history[-1] if self.execution_history else None
 
@@ -592,23 +573,17 @@ except Exception as e:
         """Clear the execution history."""
         self.execution_history.clear()
 
-    def get_engine_stats(self) -> Dict[str, Any]:
+    def get_engine_stats(self) -> dict[str, Any]:
         """Get comprehensive engine statistics."""
         total_queries = len(self.execution_history)
-        successful_queries = len(
-            [q for q in self.execution_history if q.get("success", True)]
-        )
+        successful_queries = len([q for q in self.execution_history if q.get("success", True)])
         failed_queries = total_queries - successful_queries
 
         # Calculate average execution time
         execution_times = [
-            q.get("execution_time")
-            for q in self.execution_history
-            if q.get("execution_time")
+            q.get("execution_time") for q in self.execution_history if q.get("execution_time")
         ]
-        avg_execution_time = (
-            sum(execution_times) / len(execution_times) if execution_times else 0
-        )
+        avg_execution_time = sum(execution_times) / len(execution_times) if execution_times else 0
 
         # Get prompt type distribution
         prompt_types = {}
@@ -643,7 +618,7 @@ except Exception as e:
         else:
             raise ValueError(f"Unsupported format: {format}. Use 'json' or 'csv'.")
 
-    def get_performance_metrics(self) -> Dict[str, Any]:
+    def get_performance_metrics(self) -> dict[str, Any]:
         """Get performance metrics and optimization suggestions."""
         stats = self.get_engine_stats()
 
@@ -657,7 +632,7 @@ except Exception as e:
 
         return performance_metrics
 
-    def _analyze_query_complexity(self) -> Dict[str, Any]:
+    def _analyze_query_complexity(self) -> dict[str, Any]:
         """Analyze the complexity of executed queries."""
         if not self.execution_history:
             return {}
@@ -691,9 +666,7 @@ except Exception as e:
                     operations.append("data_cleaning")
 
         if code_lengths:
-            complexity_metrics["average_code_length"] = sum(code_lengths) / len(
-                code_lengths
-            )
+            complexity_metrics["average_code_length"] = sum(code_lengths) / len(code_lengths)
 
             # Classify complexity based on code length
             for length in code_lengths:
@@ -707,28 +680,22 @@ except Exception as e:
         # Count operations
         from collections import Counter
 
-        complexity_metrics["most_common_operations"] = dict(
-            Counter(operations).most_common(5)
-        )
+        complexity_metrics["most_common_operations"] = dict(Counter(operations).most_common(5))
 
         return complexity_metrics
 
-    def _generate_optimization_suggestions(self, stats: Dict[str, Any]) -> List[str]:
+    def _generate_optimization_suggestions(self, stats: dict[str, Any]) -> list[str]:
         """Generate optimization suggestions based on performance metrics."""
         suggestions = []
 
         if stats["success_rate"] < 80:
-            suggestions.append(
-                "Consider improving LLM prompt quality or using a different model"
-            )
+            suggestions.append("Consider improving LLM prompt quality or using a different model")
 
         if stats.get("average_execution_time", 0) > 10:
             suggestions.append("Optimize code generation for faster execution")
 
         if stats.get("failed_queries", 0) > 0:
-            suggestions.append(
-                "Review failed queries to identify common failure patterns"
-            )
+            suggestions.append("Review failed queries to identify common failure patterns")
 
         if len(stats.get("prompt_type_distribution", {})) < 3:
             suggestions.append("Diversify query types to test all prompt templates")

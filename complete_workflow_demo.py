@@ -4,11 +4,13 @@ Complete AskPandas Workflow Demo
 Showcases all features from the README with real outputs
 """
 
-import askpandas as ap
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
 import random
+from datetime import datetime, timedelta
+
+import numpy as np
+import pandas as pd
+
+import askpandas as ap
 
 
 def create_comprehensive_sample_data():
@@ -48,11 +50,11 @@ def create_comprehensive_sample_data():
         customer_data.append(
             {
                 "customer_id": i + 1,
-                "name": f"Customer {i+1}",
+                "name": f"Customer {i + 1}",
                 "segment": random.choice(customer_segments),
-                "join_date": (
-                    datetime.now() - timedelta(days=random.randint(30, 365))
-                ).strftime("%Y-%m-%d"),
+                "join_date": (datetime.now() - timedelta(days=random.randint(30, 365))).strftime(
+                    "%Y-%m-%d"
+                ),
                 "total_purchases": random.randint(1, 20),
                 "avg_order_value": round(random.uniform(50, 500), 2),
             }
@@ -60,9 +62,7 @@ def create_comprehensive_sample_data():
 
     customer_df = pd.DataFrame(customer_data)
 
-    print(
-        f"✅ Created {len(sales_df)} sales records and {len(customer_df)} customer records"
-    )
+    print(f"✅ Created {len(sales_df)} sales records and {len(customer_df)} customer records")
     return sales_df, customer_df
 
 

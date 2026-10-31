@@ -4,11 +4,13 @@ Working AskPandas Demonstration
 Showcases all working features from the README
 """
 
-import askpandas as ap
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
 import random
+from datetime import datetime, timedelta
+
+import numpy as np
+import pandas as pd
+
+import askpandas as ap
 
 
 def create_comprehensive_sample_data():
@@ -48,11 +50,11 @@ def create_comprehensive_sample_data():
         customer_data.append(
             {
                 "customer_id": i + 1,
-                "name": f"Customer {i+1}",
+                "name": f"Customer {i + 1}",
                 "segment": random.choice(customer_segments),
-                "join_date": (
-                    datetime.now() - timedelta(days=random.randint(30, 365))
-                ).strftime("%Y-%m-%d"),
+                "join_date": (datetime.now() - timedelta(days=random.randint(30, 365))).strftime(
+                    "%Y-%m-%d"
+                ),
                 "total_purchases": random.randint(1, 20),
                 "avg_order_value": round(random.uniform(50, 500), 2),
             }
@@ -60,9 +62,7 @@ def create_comprehensive_sample_data():
 
     customer_df = pd.DataFrame(customer_data)
 
-    print(
-        f"✅ Created {len(sales_df)} sales records and {len(customer_df)} customer records"
-    )
+    print(f"✅ Created {len(sales_df)} sales records and {len(customer_df)} customer records")
     return sales_df, customer_df
 
 
@@ -259,18 +259,14 @@ def demo_manual_analysis():
 
     # Regional analysis
     print("\n🌍 Regional Analysis:")
-    regional_revenue = (
-        sales_ap.groupby("region")["revenue"].sum().sort_values(ascending=False)
-    )
+    regional_revenue = sales_ap.groupby("region")["revenue"].sum().sort_values(ascending=False)
     print("   Revenue by Region:")
     for region, revenue in regional_revenue.items():
         print(f"     {region}: ${revenue:,.2f}")
 
     # Product analysis
     print("\n📦 Product Analysis:")
-    product_revenue = (
-        sales_ap.groupby("product")["revenue"].sum().sort_values(ascending=False)
-    )
+    product_revenue = sales_ap.groupby("product")["revenue"].sum().sort_values(ascending=False)
     print("   Top Products by Revenue:")
     for product, revenue in product_revenue.head(3).items():
         print(f"     {product}: ${revenue:,.2f}")
@@ -278,9 +274,7 @@ def demo_manual_analysis():
     # Customer segment analysis
     print("\n👥 Customer Segment Analysis:")
     segment_revenue = (
-        sales_ap.groupby("customer_segment")["revenue"]
-        .sum()
-        .sort_values(ascending=False)
+        sales_ap.groupby("customer_segment")["revenue"].sum().sort_values(ascending=False)
     )
     print("   Revenue by Customer Segment:")
     for segment, revenue in segment_revenue.items():

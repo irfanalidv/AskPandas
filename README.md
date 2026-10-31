@@ -1,14 +1,36 @@
-# AskPandas: AI-Powered Data Engineering & Analytics Assistant
+<div align="center">
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![PyPI version](https://badge.fury.io/py/askpandas.svg)](https://badge.fury.io/py/askpandas)
+# AskPandas
+
+**Ask questions about pandas DataFrames and CSV files in plain English. An LLM writes the pandas code, AskPandas runs it in a restricted sandbox and returns the answer.**
+
+[![PyPI version](https://img.shields.io/pypi/v/askpandas.svg)](https://pypi.org/project/askpandas/)
+[![Python versions](https://img.shields.io/pypi/pyversions/askpandas.svg)](https://pypi.org/project/askpandas/)
+[![Tests](https://github.com/irfanalidv/AskPandas/actions/workflows/tests.yml/badge.svg)](https://github.com/irfanalidv/AskPandas/actions/workflows/tests.yml)
 [![Downloads](https://static.pepy.tech/badge/askpandas)](https://pepy.tech/project/askpandas)
-[![GitHub stars](https://img.shields.io/github/stars/irfanalidv/AskPandas?style=social)](https://github.com/irfanalidv/AskPandas)
-[![GitHub forks](https://img.shields.io/github/forks/irfanalidv/AskPandas?style=social)](https://github.com/irfanalidv/AskPandas)
-[![GitHub issues](https://img.shields.io/github/issues/irfanalidv/AskPandas)](https://github.com/irfanalidv/AskPandas/issues)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/irfanalidv/AskPandas/blob/main/LICENSE)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
-AskPandas is an open-source Python library that lets you query and transform CSV data using natural language, powered by free, local open-source LLMs via Ollama. **No API keys, no cloud, no cost.**
+</div>
+
+AskPandas is an open-source Python library that lets you query and transform CSV data using natural language. Run it **fully local and free** with open-source models via [Ollama](https://ollama.com) (no API keys, no cloud), or plug in **OpenAI, Mistral, Hugging Face Inference Providers or any OpenAI-compatible API**.
+
+## ✨ **Why AskPandas?**
+
+- **Plain-English analytics**: `df.chat("total revenue by region, sorted")` returns the printed result of real pandas code.
+- **Local or hosted LLMs**: `OllamaLLM` for local models, `OpenAICompatibleLLM` for OpenAI/Mistral/vLLM/LM Studio/Groq/..., `HuggingFaceLLM` for HF Inference Providers.
+- **Multi-DataFrame questions**: pass several DataFrames (`df0`, `df1`, ...) and ask for joins and comparisons.
+- **Restricted execution**: generated code runs without imports, file access or dunder attribute access, with a whitelisted set of builtins.
+- **Batteries included**: chart helpers, data-quality, statistics and performance utilities, query categorization and validation.
+- **Lightweight**: depends only on pandas, numpy, matplotlib, seaborn, scipy, psutil and requests (no torch/transformers).
+
+## ⚙️ **How it works**
+
+1. AskPandas builds a prompt with your question plus a summary of each DataFrame (columns, dtypes, null counts, sample rows).
+2. The LLM replies with pandas code; AskPandas extracts the code block and validates it.
+3. The code runs in a restricted namespace where your data is available as `df0`, `df1`, ... and its printed output is returned. Invalid replies are retried with correction hints, LLM errors are retried with backoff.
+
+> **Safety note:** the sandbox blocks the common escape routes (imports, `open`, dunder access, `eval`/`exec`), but it is a best-effort guard, not a security boundary. Only run AskPandas with models and data you trust, and do not expose it to untrusted users.
 
 ## 🚀 **Quick Start (5 minutes!)**
 
@@ -40,6 +62,8 @@ ollama serve
 ```
 
 ### 5. **Start analyzing data!**
+
+Prefer a hosted model? See [Using hosted LLMs](#-using-hosted-llms-openai-mistral-hugging-face) below.
 
 ```python
 import askpandas as ap
@@ -76,7 +100,8 @@ sales_df = ap.DataFrame(df)
 
 # AI-powered analysis
 result = sales_df.chat("What is the total revenue?")
-# Output: Total Revenue: $675.00
+print(result)
+# Output (exact wording depends on the model): Total Revenue: $675.00
 
 # More complex queries
 result = sales_df.chat("Show me the top 3 products by revenue")
@@ -112,10 +137,10 @@ df.chat("""
 # Output: Comprehensive analysis with insights
 ```
 
-### 🎨 **Beautiful Visualizations - Automatically!**
+### 🎨 **Visualizations**
 
 ```python
-# Charts are created automatically
+# Ask for a chart; the generated code saves it with save_plot() to askpandas_plots/
 df.chat("Create a bar chart of sales by region")
 df.chat("Plot revenue trends over time")
 df.chat("Show correlation between price and quantity")
@@ -224,6 +249,63 @@ research.chat("""
     6. Statistical significance testing
 """)
 ```
+
+## ☁️ **Using hosted LLMs (OpenAI, Mistral, Hugging Face)**
+
+```python
+import askpandas as ap
+
+# OpenAI (reads OPENAI_API_KEY)
+ap.set_llm(ap.OpenAICompatibleLLM.openai("gpt-4o-mini"))
+
+# Mistral (reads MISTRAL_API_KEY)
+ap.set_llm(ap.OpenAICompatibleLLM.mistral("mistral-small-latest"))
+
+# Hugging Face Inference Providers (reads HF_TOKEN)
+ap.set_llm(ap.HuggingFaceLLM("Qwen/Qwen2.5-Coder-7B-Instruct"))
+
+# Any OpenAI-compatible server (vLLM, LM Studio, Ollama's /v1, Groq, Together, ...)
+ap.set_llm(ap.OpenAICompatibleLLM("my-model", base_url="http://localhost:8000/v1", api_key="..."))
+
+df = ap.DataFrame("demo_sales.csv")
+print(df.chat("What is the total revenue by region? Sort descending."))
+```
+
+Verified output with `gpt-4o-mini` on the bundled `demo_sales.csv` (matches a direct pandas `groupby`):
+
+```
+Total Revenue by Region:
+region
+South    50557.76
+North    40075.88
+East     30787.38
+West     26978.72
+Name: revenue, dtype: float64
+```
+
+### **Environment variables**
+
+| Variable | Used by |
+| --- | --- |
+| `OPENAI_API_KEY` | `OpenAICompatibleLLM.openai()` / `OpenAICompatibleLLM(...)` default |
+| `MISTRAL_API_KEY` | `OpenAICompatibleLLM.mistral()` |
+| `HF_TOKEN` (or `HF_API_KEY`) | `HuggingFaceLLM` |
+
+Ollama needs no key; point `OllamaLLM(host=...)` at a remote server if it is not on `localhost:11434`.
+
+## 🧩 **API Overview**
+
+| Object | What it does |
+| --- | --- |
+| `ap.DataFrame(data)` / `AskDataFrame` | Wrap a pandas DataFrame, dict, list of records, or a `.csv`/`.json` path. Adds `.chat()`, `.info()`, `.get_summary_stats()`, `.get_column_info()`, `.clean_columns()`; other attributes pass through to pandas. |
+| `ap.set_llm(llm)` / `ap.get_llm()` | Set/get the global LLM used by `.chat()` and `ap.chat()`. |
+| `ap.chat(query, *dfs)` | Ask a question across several DataFrames (`df0`, `df1`, ...). |
+| `OllamaLLM`, `OpenAICompatibleLLM`, `HuggingFaceLLM`, `BaseLLM` | LLM clients; subclass `BaseLLM` (implement `generate` and `is_available`) to add your own. |
+| `AskPandasEngine(llm)` | The engine behind `.chat()`; keeps execution history (`get_execution_history()`, `get_engine_stats()`, `export_execution_history()`). |
+| `ap.analyze_query`, `ap.validate_query`, `ap.get_query_examples` | Query categorization, validation against columns, example prompts. |
+| `ap.set_config(...)` / `ap.get_config()` | Global settings (verbosity, plot style, output directory, ...). |
+| `askpandas.visualization.charts` | `create_bar_chart`, `create_line_chart`, `create_scatter_plot`, `create_histogram`, `create_correlation_heatmap`, `create_box_plot`, `save_plot`. |
+| `askpandas.utils` | `data_quality`, `statistical` and `performance` helper modules. |
 
 ## 🛠️ **Advanced Features**
 
@@ -360,10 +442,8 @@ pip install -e ".[dev]"
 
 ## 📱 **Platform Support**
 
-- ✅ **macOS** - Native support with Apple Silicon optimization
-- ✅ **Linux** - Full compatibility with all distributions
-- ✅ **Windows** - Complete support with WSL2 recommended
-- ✅ **Cloud** - Works on Google Colab, AWS, Azure, etc.
+- ✅ **macOS, Linux and Windows** (pure Python; Python 3.10-3.13)
+- ✅ **Notebooks and cloud environments** such as Google Colab (use a hosted LLM or a reachable Ollama server)
 
 ## 🆘 **Troubleshooting**
 
@@ -394,8 +474,8 @@ ollama pull phi3:mini
 # Update pip
 pip install --upgrade pip
 
-# Install with specific Python version
-python3.9 -m pip install askpandas
+# AskPandas requires Python 3.10+
+python3.12 -m pip install askpandas
 ```
 
 ## 📚 **Learning Resources**
@@ -416,27 +496,9 @@ python simple_config.py
 - `comprehensive_sample.csv` - Larger dataset for practice
 - Create your own CSV files and start analyzing!
 
-## 🎉 **Success Stories**
+## 🚀 **Roadmap**
 
-### **Data Scientists**
-
-> "AskPandas reduced my data exploration time from hours to minutes. I can now focus on insights instead of coding."
-
-### **Business Analysts**
-
-> "I can analyze complex datasets without learning Python syntax. Natural language queries are a game-changer!"
-
-### **Researchers**
-
-> "Perfect for exploratory data analysis. I can quickly test hypotheses and generate visualizations for papers."
-
-### **Students**
-
-> "Learning data analysis has never been easier. AskPandas makes complex concepts accessible."
-
-## 🚀 **What's Next?**
-
-### **Version 0.2.0 (Coming Soon)**
+### **Next**
 
 - [ ] Jupyter notebook integration
 - [ ] More visualization options (Plotly, Bokeh)
@@ -452,14 +514,16 @@ python simple_config.py
 
 ## 🤝 **Get Help & Contribute**
 
-- **📖 Documentation**: [GitHub Wiki](https://github.com/irfanalidv/AskPandas/wiki)
+- **📖 Documentation**: this README and the [examples](https://github.com/irfanalidv/AskPandas/tree/main/examples)
+- **🛠️ Contributing**: see [CONTRIBUTING.md](https://github.com/irfanalidv/AskPandas/blob/main/CONTRIBUTING.md)
+- **📝 Changelog**: [CHANGELOG.md](https://github.com/irfanalidv/AskPandas/blob/main/CHANGELOG.md)
 - **🐛 Bug Reports**: [GitHub Issues](https://github.com/irfanalidv/AskPandas/issues)
 - **💬 Discussions**: [GitHub Discussions](https://github.com/irfanalidv/AskPandas/discussions)
 - **⭐ Star**: [GitHub Repository](https://github.com/irfanalidv/AskPandas)
 
 ## 📄 **License**
 
-MIT License - Use freely for personal and commercial projects!
+MIT License - see [LICENSE](https://github.com/irfanalidv/AskPandas/blob/main/LICENSE). Use freely for personal and commercial projects!
 
 ## 🙏 **Acknowledgments**
 

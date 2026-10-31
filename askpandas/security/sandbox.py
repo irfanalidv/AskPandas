@@ -1,10 +1,13 @@
 import ast
+import builtins
+from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
-from contextlib import redirect_stdout, redirect_stderr
-import pandas as pd
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import seaborn as sns
+
 from ..visualization.charts import save_plot
 
 
@@ -64,25 +67,11 @@ class SafeExecutor:
             "repr",
             "ascii",
             "hash",
-            "id",
-            "vars",
-            "dir",
-            "getattr",
             "hasattr",
             "callable",
             "issubclass",
-            "super",
-            "property",
-            "staticmethod",
-            "classmethod",
             "next",
             "iter",
-            "help",
-            "compile",
-            "breakpoint",
-            "copyright",
-            "credits",
-            "license",
         }
 
         # Dangerous operations that are explicitly blocked
@@ -111,14 +100,17 @@ class SafeExecutor:
         except ValueError as e:
             return f"Code validation failed: {e}"
 
-        # Prepare execution environment
-        safe_globals = {
+        # Prepare execution environment. A single namespace is used for globals and
+        # locals so that comprehensions/generator expressions can see df0, df1, ...
+        # (with separate dicts they raise NameError on Python < 3.12).
+        namespace = {
             "__builtins__": {
-                name: getattr(__builtins__, name)
+                name: getattr(builtins, name)
                 for name in self.allowed_builtins
-                if hasattr(__builtins__, name)
+                if hasattr(builtins, name)
             },
             **self.allowed_modules,
+            **local_vars,
         }
 
         # Capture output
@@ -127,16 +119,18 @@ class SafeExecutor:
 
         try:
             with redirect_stdout(output_buffer), redirect_stderr(error_buffer):
-                exec(code, safe_globals, local_vars)
+                exec(code, namespace)
 
             output = output_buffer.getvalue()
             errors = error_buffer.getvalue()
+            # Expose variables created by the code to the caller
+            for key, value in namespace.items():
+                if key != "__builtins__" and key not in self.allowed_modules:
+                    local_vars[key] = value
 
-            return (
-                errors
-                if errors
-                else (output if output else "Code executed successfully (no output)")
-            )
+            if output and errors:
+                return f"{output}\n[stderr]\n{errors}"
+            return output or errors or "Code executed successfully (no output)"
         except Exception as e:
             return f"Execution failed: {e}"
 
@@ -152,9 +146,14 @@ class SafeExecutor:
         for node in ast.walk(tree):
             # Check for dangerous node types
             if any(isinstance(node, dangerous) for dangerous in dangerous_nodes):
-                raise ValueError(
-                    f"Dangerous operation not allowed: {type(node).__name__}"
-                )
+                raise ValueError(f"Dangerous operation not allowed: {type(node).__name__}")
+
+            # Block dunder attribute access (e.g. ().__class__.__subclasses__()),
+            # the classic way to escape restricted-builtins sandboxes
+            if isinstance(node, ast.Attribute) and node.attr.startswith("__"):
+                raise ValueError(f"Access to dunder attribute '{node.attr}' is not allowed")
+            if isinstance(node, ast.Name) and node.id.startswith("__"):
+                raise ValueError(f"Access to dunder name '{node.id}' is not allowed")
 
             # Check function definitions
             if isinstance(node, ast.FunctionDef):
@@ -186,13 +185,9 @@ class SafeExecutor:
 
             # Check for network operations
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                if hasattr(node.func, "value") and isinstance(
-                    node.func.value, ast.Name
-                ):
+                if hasattr(node.func, "value") and isinstance(node.func.value, ast.Name):
                     if node.func.value.id in ["requests", "urllib", "socket"]:
-                        raise ValueError(
-                            "Network operations are not allowed in safe mode"
-                        )
+                        raise ValueError("Network operations are not allowed in safe mode")
 
     def get_execution_stats(self) -> dict:
         """Get statistics about the execution environment."""

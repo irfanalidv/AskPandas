@@ -1,7 +1,9 @@
-import askpandas as ap
+import random
+
 import pandas as pd
 from faker import Faker
-import random
+
+import askpandas as ap
 
 # Generate a fake CSV file for testing
 fake = Faker()
