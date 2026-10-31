@@ -89,16 +89,16 @@ line-length = 100
 extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "UP"]
-ignore = ["E501", "E722", "B904"]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "RUF", "PTH", "RET", "PIE"]
+ignore = [
+    "E501",    # long lines are handled by the formatter; prompt strings are allowed to be long
+    "RUF001",  # ambiguous unicode in user-facing strings is intentional
+]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["E402"]
-"*demo*.py" = ["F401", "F841", "B007", "E402"]
-"comprehensive_test.py" = ["F401", "F841", "B007", "E402"]
-"test_basic_functionality.py" = ["F401", "F841", "B007", "E402"]
-"simple_config.py" = ["F401"]
-"examples/*" = ["F401", "F841", "B007", "E402"]
+# Tests and examples favour readability over strict rules
+"tests/*" = ["E402", "PTH"]
+"examples/*" = ["E402"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["askpandas"]
@@ -106,3 +106,11 @@ known-first-party = ["askpandas"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra -q"
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = true
+check_untyped_defs = true
+warn_redundant_casts = true
+no_implicit_optional = true

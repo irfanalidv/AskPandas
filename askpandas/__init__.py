@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from typing import Any
@@ -9,6 +10,14 @@ from typing import Any
 from .core.dataframe import AskDataFrame
 from .core.engine import AskPandasEngine
 from .core.query_processor import QueryProcessor
+from .exceptions import (
+    AskPandasError,
+    CodeGenerationError,
+    DataLoadError,
+    LLMError,
+    LLMNotConfiguredError,
+    QueryProcessingError,
+)
 from .llm.base import BaseLLM
 from .llm.huggingface_client import HuggingFaceLLM
 from .llm.ollama_client import OllamaLLM
@@ -41,49 +50,60 @@ __author__ = "Md Irfan Ali"
 __email__ = "irfanali29@hotmail.com"
 
 __all__ = [
-    # Core classes
     "AskDataFrame",
     "AskPandasEngine",
-    "QueryProcessor",
-    # LLM clients
+    "AskPandasError",
     "BaseLLM",
-    "OllamaLLM",
+    "CodeGenerationError",
+    "DataFrame",
+    "DataLoadError",
     "HuggingFaceLLM",
+    "LLMError",
+    "LLMNotConfiguredError",
+    "OllamaLLM",
     "OpenAICompatibleLLM",
-    # Utility functions
-    "validate_dataframe",
-    "get_dataframe_summary",
-    "format_number",
-    "detect_data_types",
+    "QueryProcessingError",
+    "QueryProcessor",
+    "__version__",
+    "analyze_query",
+    "chat",
     "clean_column_names",
-    "get_memory_usage_mb",
-    # Visualization functions
-    "save_plot",
     "create_bar_chart",
+    "create_box_plot",
+    "create_correlation_heatmap",
+    "create_histogram",
     "create_line_chart",
     "create_scatter_plot",
-    "create_histogram",
-    "create_correlation_heatmap",
-    "create_box_plot",
-    "set_plot_style",
-    "get_plot_colors",
-    # Convenience functions
-    "DataFrame",
-    "set_llm",
-    "chat",
-    "get_config",
-    "set_config",
-    "get_llm",
+    "detect_data_types",
+    "format_number",
     "get_available_models",
+    "get_config",
+    "get_dataframe_summary",
+    "get_llm",
+    "get_memory_usage_mb",
+    "get_plot_colors",
     "get_query_examples",
-    "analyze_query",
+    "save_plot",
+    "set_config",
+    "set_llm",
+    "set_plot_style",
+    "validate_dataframe",
     "validate_query",
-    "__version__",
 ]
 
 
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
+
+
 class Config:
-    """Configuration class for AskPandas."""
+    """Global settings, read and changed with :func:`get_config` / :func:`set_config`.
+
+    Settings that take effect: ``output_dir`` (where :func:`save_plot` writes),
+    ``plot_style`` (applied when changed via :func:`set_config`) and ``verbose``
+    (logs configuration changes at INFO level). The remaining keys are stored for
+    forward compatibility and are not enforced yet.
+    """
 
     def __init__(self) -> None:
         self.llm: Any = None
@@ -119,7 +139,9 @@ class Config:
             if hasattr(self, key):
                 setattr(self, key, value)
             else:
-                raise ValueError(f"Unknown configuration key: {key}")
+                raise ValueError(
+                    f"Unknown configuration key: {key!r}. Valid keys: {sorted(self.to_dict())}"
+                )
 
 
 # Global configuration instance
@@ -127,13 +149,17 @@ config = Config()
 
 
 def set_llm(llm: Any) -> None:
-    """Set the LLM to use globally."""
+    """Set the LLM used by :meth:`AskDataFrame.chat` and :func:`chat`.
+
+    Any object with ``generate(prompt) -> str`` and ``is_available() -> bool`` works;
+    subclassing :class:`BaseLLM` is optional.
+    """
     if not hasattr(llm, "generate") or not hasattr(llm, "is_available"):
         raise ValueError("LLM must implement 'generate' and 'is_available' methods")
 
     config.llm = llm
     if config.verbose:
-        print(f"LLM set to: {type(llm).__name__}")
+        logger.info("LLM set to: %s", type(llm).__name__)
 
 
 def get_llm() -> Any:
@@ -149,14 +175,24 @@ def get_config() -> dict[str, Any]:
 def set_config(**kwargs: Any) -> None:
     """Update configuration."""
     config.update(**kwargs)
+    if "plot_style" in kwargs:
+        set_plot_style(config.plot_style)
     if config.verbose:
-        print("Configuration updated:", kwargs)
+        logger.info("Configuration updated: %s", kwargs)
 
 
 def chat(query: str, *dataframes: Any) -> Any:
-    """Chat with multiple dataframes using configured LLM."""
+    """Ask ``query`` across one or more DataFrames (exposed as ``df0``, ``df1``, ...).
+
+    Each argument may be an :class:`AskDataFrame` or anything :func:`DataFrame` accepts.
+
+    Raises:
+        LLMNotConfiguredError: If :func:`set_llm` has not been called.
+        ValueError: If no DataFrame is given.
+        QueryProcessingError: If the query fails.
+    """
     if not config.llm:
-        raise ValueError("No LLM configured. Use askpandas.set_llm() to set one.")
+        raise LLMNotConfiguredError("No LLM configured. Use askpandas.set_llm() to set one.")
 
     if not dataframes:
         raise ValueError("At least one dataframe must be provided.")
@@ -173,7 +209,7 @@ def chat(query: str, *dataframes: Any) -> Any:
     return engine.process_query(query, validated_dfs)
 
 
-def DataFrame(data: Any) -> AskDataFrame:  # noqa: N802 - mirrors pandas.DataFrame
+def DataFrame(data: Any) -> AskDataFrame:
     """Create an AskPandas DataFrame."""
     return AskDataFrame(data)
 
@@ -217,7 +253,3 @@ def validate_query(query: str, columns: list[str]) -> dict[str, Any]:
     """Validate if a query can be executed with given columns."""
     processor = QueryProcessor()
     return processor.validate_query(query, columns)
-
-
-# Set default plotting style
-set_plot_style(config.plot_style)

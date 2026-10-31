@@ -2,17 +2,26 @@ import ast
 import builtins
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from ..visualization.charts import save_plot
+from ..visualization.charts import (
+    create_bar_chart,
+    create_box_plot,
+    create_correlation_heatmap,
+    create_histogram,
+    create_line_chart,
+    create_scatter_plot,
+    save_plot,
+)
 
 
 class SafeExecutor:
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the safe code execution environment."""
         # Allowed modules and functions
         self.allowed_modules = {
@@ -25,7 +34,16 @@ class SafeExecutor:
             "plt": plt,
             "sns": sns,
             "save_plot": save_plot,
+            # Chart helpers advertised in the engine prompts
+            "create_bar_chart": create_bar_chart,
+            "create_line_chart": create_line_chart,
+            "create_scatter_plot": create_scatter_plot,
+            "create_histogram": create_histogram,
+            "create_correlation_heatmap": create_correlation_heatmap,
+            "create_box_plot": create_box_plot,
         }
+        # Error message of the most recent execute() call, or None if it succeeded
+        self.last_error: str | None = None
 
         # Allowed built-in functions
         self.allowed_builtins = {
@@ -89,16 +107,24 @@ class SafeExecutor:
             "def",
         }
 
-    def execute(self, code: str, local_vars: dict) -> str:
-        """Execute code safely and return output."""
+    def execute(self, code: str, local_vars: dict[str, Any]) -> str:
+        """Validate and run ``code``; return everything it printed.
+
+        Errors are not raised: the returned string describes them, and
+        :attr:`last_error` holds the message (``None`` after a successful run).
+        Variables the code creates are written back into ``local_vars``.
+        """
+        self.last_error = None
         # Parse and validate AST
         try:
             tree = ast.parse(code)
             self._validate_ast(tree)
         except SyntaxError as e:
-            return f"Syntax error in generated code: {e}"
+            self.last_error = f"Syntax error in generated code: {e}"
+            return self.last_error
         except ValueError as e:
-            return f"Code validation failed: {e}"
+            self.last_error = f"Code validation failed: {e}"
+            return self.last_error
 
         # Prepare execution environment. A single namespace is used for globals and
         # locals so that comprehensions/generator expressions can see df0, df1, ...
@@ -132,9 +158,10 @@ class SafeExecutor:
                 return f"{output}\n[stderr]\n{errors}"
             return output or errors or "Code executed successfully (no output)"
         except Exception as e:
-            return f"Execution failed: {e}"
+            self.last_error = f"Execution failed: {e}"
+            return self.last_error
 
-    def _validate_ast(self, tree):
+    def _validate_ast(self, tree: ast.AST) -> None:
         """Validate AST for security."""
         dangerous_nodes = [
             ast.Import,
@@ -159,37 +186,34 @@ class SafeExecutor:
             if isinstance(node, ast.FunctionDef):
                 raise ValueError("Function definitions are not allowed in safe mode")
 
-            # Check for loops and conditionals (basic control flow is allowed)
-            if isinstance(node, (ast.For, ast.While, ast.If, ast.Try)):
-                # Allow basic control flow but with restrictions
-                pass
-
             # Check function calls
-            if isinstance(node, ast.Call):
-                if isinstance(node.func, ast.Name):
-                    func_name = node.func.id
-                    if (
-                        func_name not in self.allowed_builtins
-                        and func_name not in self.allowed_modules
-                        and func_name not in self.blocked_operations
-                    ):
-                        # Allow method calls on allowed objects
-                        if isinstance(node.func, ast.Attribute):
-                            continue
-                        raise ValueError(f"Function call not allowed: {func_name}")
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                func_name = node.func.id
+                if (
+                    func_name not in self.allowed_builtins
+                    and func_name not in self.allowed_modules
+                    and func_name not in self.blocked_operations
+                ):
+                    raise ValueError(f"Function call not allowed: {func_name}")
 
             # Check for file operations
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-                if node.func.id in ["open", "file"]:
-                    raise ValueError("File operations are not allowed in safe mode")
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id in ("open", "file")
+            ):
+                raise ValueError("File operations are not allowed in safe mode")
 
             # Check for network operations
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                if hasattr(node.func, "value") and isinstance(node.func.value, ast.Name):
-                    if node.func.value.id in ["requests", "urllib", "socket"]:
-                        raise ValueError("Network operations are not allowed in safe mode")
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id in ("requests", "urllib", "socket")
+            ):
+                raise ValueError("Network operations are not allowed in safe mode")
 
-    def get_execution_stats(self) -> dict:
+    def get_execution_stats(self) -> dict[str, Any]:
         """Get statistics about the execution environment."""
         return {
             "allowed_modules": list(self.allowed_modules.keys()),

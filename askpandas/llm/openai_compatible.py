@@ -12,6 +12,7 @@ from typing import Any
 
 import requests
 
+from ..exceptions import LLMError
 from .base import BaseLLM
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -105,11 +106,9 @@ class OpenAICompatibleLLM(BaseLLM):
             return data["choices"][0]["message"]["content"] or ""
         except requests.HTTPError as e:
             body = e.response.text[:500] if e.response is not None else ""
-            raise RuntimeError(
-                f"{type(self).__name__} request failed ({e}). Response: {body}"
-            ) from e
+            raise LLMError(f"{type(self).__name__} request failed ({e}). Response: {body}") from e
         except Exception as e:
-            raise RuntimeError(f"{type(self).__name__} failed to generate a response: {e}") from e
+            raise LLMError(f"{type(self).__name__} failed to generate a response: {e}") from e
 
     def is_available(self) -> bool:
         """Return True if ``GET {base_url}/models`` succeeds with the configured key."""

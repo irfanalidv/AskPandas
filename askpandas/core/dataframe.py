@@ -1,8 +1,13 @@
-from typing import Any
+"""The ``AskDataFrame`` wrapper returned by :func:`askpandas.DataFrame`."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 
+from ..exceptions import DataLoadError, LLMNotConfiguredError
 from ..utils.helpers import (
     clean_column_names,
     get_dataframe_summary,
@@ -11,40 +16,53 @@ from ..utils.helpers import (
     validate_dataframe,
 )
 
+if TYPE_CHECKING:
+    from .engine import AskPandasEngine
+
 
 class AskDataFrame:
     """Enhanced DataFrame with AI-powered capabilities."""
 
-    def __init__(self, data: Any):
-        """Initialize an AskDataFrame from various input types."""
+    def __init__(self, data: Any) -> None:
+        """Wrap ``data``: a DataFrame, dict, list of records, or a ``.csv``/``.json`` path.
+
+        Raises:
+            DataLoadError: If ``data`` cannot be converted to a DataFrame.
+        """
         try:
             self.df = validate_dataframe(data)
+        except DataLoadError:
+            raise
         except Exception as e:
-            raise ValueError(f"Failed to create DataFrame: {e}")
+            raise DataLoadError(f"Failed to create DataFrame: {e}") from e
 
         # Store original data source for reference
         self._source = data if isinstance(data, str) else "data"
 
         # Initialize engine (will be set later)
-        self._engine = None
+        self._engine: AskPandasEngine | None = None
 
-    def _get_engine(self):
-        """Get or create the engine instance."""
+    def _get_engine(self) -> AskPandasEngine | None:
+        """Get or create the engine, following the LLM currently set with ``set_llm``."""
+        # Import here to avoid circular imports
+        from .. import get_llm
+        from ..core.engine import AskPandasEngine
+
+        llm = get_llm()
+        if not llm:
+            return None
         if self._engine is None:
-            # Import here to avoid circular imports
-            from .. import get_llm
-            from ..core.engine import AskPandasEngine
-
-            llm = get_llm()
-            if llm:
-                self._engine = AskPandasEngine(llm)
+            self._engine = AskPandasEngine(llm)
+        elif self._engine.llm is not llm:
+            # set_llm() was called again: keep the history, switch the model
+            self._engine.llm = llm
         return self._engine
 
     def chat(self, query: str) -> Any:
         """Query the dataframe using natural language."""
         engine = self._get_engine()
         if engine is None:
-            raise ValueError("No LLM configured. Use askpandas.set_llm() to set one.")
+            raise LLMNotConfiguredError("No LLM configured. Use askpandas.set_llm() to set one.")
 
         return engine.process_query(query, [self])
 
@@ -52,7 +70,7 @@ class AskDataFrame:
         """Return a string with dataframe metadata and sample data."""
         summary = get_dataframe_summary(self.df)
 
-        info_str = f"""
+        return f"""
 DataFrame Info:
 - Shape: {summary["shape"]}
 - Columns: {summary["columns"]}
@@ -63,7 +81,6 @@ DataFrame Info:
 - Sample data (first 3 rows):
 {self.df.head(3).to_string()}
 """
-        return info_str
 
     def describe(self) -> pd.DataFrame:
         """Get statistical description of the DataFrame."""
@@ -77,7 +94,7 @@ DataFrame Info:
         """Get last n rows of the DataFrame."""
         return self.df.tail(n)
 
-    def shape(self) -> tuple:
+    def shape(self) -> tuple[int, int]:
         """Get the shape of the DataFrame."""
         return self.df.shape
 
@@ -85,7 +102,7 @@ DataFrame Info:
         """Get the column names."""
         return list(self.df.columns)
 
-    def dtypes(self) -> dict[str, str]:
+    def dtypes(self) -> dict[str, Any]:
         """Get the data types of columns."""
         return dict(self.df.dtypes)
 
@@ -97,35 +114,35 @@ DataFrame Info:
         """Get boolean mask of non-null values."""
         return self.df.notnull()
 
-    def dropna(self, **kwargs) -> "AskDataFrame":
+    def dropna(self, **kwargs: Any) -> AskDataFrame:
         """Drop rows with null values."""
         return AskDataFrame(self.df.dropna(**kwargs))
 
-    def fillna(self, value, **kwargs) -> "AskDataFrame":
+    def fillna(self, value: Any, **kwargs: Any) -> AskDataFrame:
         """Fill null values."""
         return AskDataFrame(self.df.fillna(value, **kwargs))
 
-    def sort_values(self, by: str | list[str], **kwargs) -> "AskDataFrame":
+    def sort_values(self, by: str | list[str], **kwargs: Any) -> AskDataFrame:
         """Sort DataFrame by values."""
         return AskDataFrame(self.df.sort_values(by, **kwargs))
 
-    def groupby(self, by: str | list[str], **kwargs) -> pd.core.groupby.DataFrameGroupBy:
+    def groupby(self, by: str | list[str], **kwargs: Any) -> pd.core.groupby.DataFrameGroupBy:
         """Group DataFrame by columns."""
         return self.df.groupby(by, **kwargs)
 
-    def query(self, expr: str) -> "AskDataFrame":
+    def query(self, expr: str) -> AskDataFrame:
         """Query DataFrame using string expression."""
         return AskDataFrame(self.df.query(expr))
 
-    def select_dtypes(self, include=None, exclude=None) -> "AskDataFrame":
+    def select_dtypes(self, include: Any = None, exclude: Any = None) -> AskDataFrame:
         """Select columns based on data types."""
         return AskDataFrame(self.df.select_dtypes(include=include, exclude=exclude))
 
-    def clean_columns(self) -> "AskDataFrame":
+    def clean_columns(self) -> AskDataFrame:
         """Clean column names by removing special characters and standardizing format."""
         return AskDataFrame(clean_column_names(self.df))
 
-    def to_csv(self, path: str, **kwargs) -> str:
+    def to_csv(self, path: str, **kwargs: Any) -> str:
         """Save DataFrame to CSV file."""
         try:
             self.df.to_csv(path, **kwargs)
@@ -133,7 +150,7 @@ DataFrame Info:
         except Exception as e:
             return f"Failed to save DataFrame: {e}"
 
-    def to_json(self, path: str, **kwargs) -> str:
+    def to_json(self, path: str, **kwargs: Any) -> str:
         """Save DataFrame to JSON file."""
         try:
             self.df.to_json(path, **kwargs)
@@ -198,25 +215,28 @@ DataFrame Info:
 
         return info
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         """Delegate unknown attributes to the underlying pandas DataFrame."""
+        # Guard against infinite recursion when ``df`` is not set yet (copy, pickle)
+        if name == "df" or name.startswith("__"):
+            raise AttributeError(name)
         return getattr(self.df, name)
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: Any) -> Any:
         """Allow indexing operations."""
         result = self.df[key]
         if isinstance(result, pd.DataFrame):
             return AskDataFrame(result)
         return result
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Return the length of the DataFrame."""
         return len(self.df)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """String representation of the DataFrame."""
         return f"AskDataFrame(shape={self.df.shape}, columns={list(self.df.columns)})"
 
-    def __str__(self):
+    def __str__(self) -> str:
         """String representation of the DataFrame."""
         return self.__repr__()

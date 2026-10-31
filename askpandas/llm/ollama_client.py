@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import requests
 
+from ..exceptions import LLMError
 from .base import BaseLLM
 
 
@@ -44,7 +45,7 @@ class OllamaLLM(BaseLLM):
             result = response.json()
             return result.get("response", "")
         except Exception as e:
-            raise RuntimeError(f"Ollama failed to generate response: {e}") from e
+            raise LLMError(f"Ollama failed to generate response: {e}") from e
 
     def is_available(self) -> bool:
         """Check if Ollama service is running."""

@@ -1,7 +1,10 @@
+import os
 import warnings
 from typing import Any
 
 import pandas as pd
+
+from ..exceptions import DataLoadError
 
 
 def is_text_column(series: pd.Series) -> bool:
@@ -15,25 +18,33 @@ def is_numeric_column(series: pd.Series) -> bool:
 
 
 def validate_dataframe(df: Any) -> pd.DataFrame:
-    """Validate and convert input to pandas DataFrame."""
+    """Convert ``df`` to a pandas DataFrame.
+
+    Accepts a DataFrame (returned as-is), a dict or list of records, or a path
+    (``str`` or :class:`os.PathLike`) to a ``.csv`` or ``.json`` file.
+
+    Raises:
+        DataLoadError: If the input cannot be converted or the file cannot be read.
+    """
     if isinstance(df, pd.DataFrame):
         return df
-    elif isinstance(df, dict):
+    if isinstance(df, (dict, list)):
         return pd.DataFrame(df)
-    elif isinstance(df, list):
-        return pd.DataFrame(df)
-    elif isinstance(df, str):
-        if df.endswith(".csv"):
-            return pd.read_csv(df, encoding="utf-8", low_memory=False)
-        elif df.endswith(".json"):
-            return pd.read_json(df, encoding="utf-8")
-        else:
-            raise ValueError("Unsupported file format. Use .csv or .json")
-    else:
+    if isinstance(df, (str, os.PathLike)):
+        path = os.fspath(df)
+        lowered = str(path).lower()
         try:
-            return pd.DataFrame(df)
-        except Exception as e:
-            raise ValueError(f"Failed to create DataFrame: {e}")
+            if lowered.endswith(".csv"):
+                return pd.read_csv(path, encoding="utf-8", low_memory=False)
+            if lowered.endswith(".json"):
+                return pd.read_json(path, encoding="utf-8")
+        except (OSError, ValueError) as e:
+            raise DataLoadError(f"Could not read {path!r}: {e}") from e
+        raise DataLoadError(f"Unsupported file format for {path!r}. Use a .csv or .json path.")
+    try:
+        return pd.DataFrame(df)
+    except Exception as e:
+        raise DataLoadError(f"Failed to create DataFrame: {e}") from e
 
 
 def get_dataframe_summary(df: pd.DataFrame) -> dict[str, Any]:
@@ -54,10 +65,9 @@ def format_number(value: int | float) -> str:
     if isinstance(value, (int, float)):
         if abs(value) >= 1e6:
             return f"{value / 1e6:.2f}M"
-        elif abs(value) >= 1e3:
+        if abs(value) >= 1e3:
             return f"{value / 1e3:.2f}K"
-        else:
-            return f"{value:.2f}"
+        return f"{value:.2f}"
     return str(value)
 
 

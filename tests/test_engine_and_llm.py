@@ -189,11 +189,13 @@ def test_openai_compatible_generate_payload(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_openai_compatible_error_is_wrapped(monkeypatch: pytest.MonkeyPatch) -> None:
     llm = ap.OpenAICompatibleLLM("m", base_url="http://localhost:1/v1", api_key="k")
-    with mock.patch(
-        "askpandas.llm.openai_compatible.requests.post", side_effect=ConnectionError("down")
+    with (
+        mock.patch(
+            "askpandas.llm.openai_compatible.requests.post", side_effect=ConnectionError("down")
+        ),
+        pytest.raises(RuntimeError, match="down"),
     ):
-        with pytest.raises(RuntimeError, match="down"):
-            llm.generate("x")
+        llm.generate("x")
 
 
 def test_openai_compatible_is_available(monkeypatch: pytest.MonkeyPatch) -> None:

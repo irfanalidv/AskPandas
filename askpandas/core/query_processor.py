@@ -55,7 +55,7 @@ class QueryProcessor:
     def categorize_query(self, query: str) -> dict[str, Any]:
         """Categorize a query and provide suggestions."""
         query_lower = query.lower()
-        categories = {}
+        categories: dict[str, dict[str, Any]] = {}
 
         for category, patterns in self.query_patterns.items():
             matches = []
@@ -73,7 +73,7 @@ class QueryProcessor:
         return {
             "query": query,
             "categories": categories,
-            "primary_category": max(categories.keys(), key=lambda k: categories[k]["confidence"])
+            "primary_category": max(categories, key=lambda k: float(categories[k]["confidence"]))
             if categories
             else None,
             "total_categories": len(categories),
@@ -81,7 +81,13 @@ class QueryProcessor:
 
     def extract_entities(self, query: str) -> dict[str, Any]:
         """Extract entities like column names, values, and conditions from the query."""
-        entities = {"columns": [], "values": [], "conditions": [], "numbers": [], "dates": []}
+        entities: dict[str, list[Any]] = {
+            "columns": [],
+            "values": [],
+            "conditions": [],
+            "numbers": [],
+            "dates": [],
+        }
 
         # Extract potential column names (words that might be column names)
         words = re.findall(r"\b[a-zA-Z_][a-zA-Z0-9_]*\b", query)
@@ -148,7 +154,7 @@ class QueryProcessor:
     def validate_query(self, query: str, available_columns: list[str]) -> dict[str, Any]:
         """Validate if the query can be executed with available columns."""
         entities = self.extract_entities(query)
-        validation = {
+        validation: dict[str, Any] = {
             "is_valid": True,
             "warnings": [],
             "errors": [],
@@ -211,10 +217,9 @@ class QueryProcessor:
 
         if category and category in examples:
             return examples[category]
-        elif category:
+        if category:
             return [f"No examples available for category: {category}"]
-        else:
-            all_examples = []
-            for cat_examples in examples.values():
-                all_examples.extend(cat_examples)
-            return all_examples
+        all_examples = []
+        for cat_examples in examples.values():
+            all_examples.extend(cat_examples)
+        return all_examples

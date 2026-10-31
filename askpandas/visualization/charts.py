@@ -1,13 +1,18 @@
-import os
+import logging
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from matplotlib.colors import to_hex
+from matplotlib.figure import Figure
+
+logger = logging.getLogger(__name__)
 
 
 def save_plot(
-    fig, filename: str = "plot.png", dpi: int = 150, output_dir: str | None = None
+    fig: Figure, filename: str = "plot.png", dpi: int = 150, output_dir: str | None = None
 ) -> str:
     """Save a matplotlib or seaborn plot to a file.
 
@@ -23,8 +28,8 @@ def save_plot(
             output_dir = "askpandas_plots"
     try:
         # Ensure the output directory exists
-        os.makedirs(output_dir, exist_ok=True)
-        filepath = os.path.join(output_dir, filename)
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        filepath = Path(output_dir) / filename
 
         # Set figure size if not already set
         if fig.get_size_inches().sum() == 0:
@@ -33,7 +38,8 @@ def save_plot(
         fig.savefig(filepath, bbox_inches="tight", dpi=dpi, facecolor="white", edgecolor="none")
         plt.close(fig)
         return f"Plot saved to {filepath}"
-    except Exception as e:
+    except (OSError, ValueError) as e:
+        logger.warning("Failed to save plot %s: %s", filename, e)
         return f"Failed to save plot: {e}"
 
 
@@ -41,9 +47,9 @@ def create_bar_chart(
     data: pd.DataFrame,
     x_col: str,
     y_col: str,
-    title: str = None,
+    title: str | None = None,
     figsize: tuple[int, int] = (10, 6),
-) -> plt.Figure:
+) -> Figure:
     """Create a bar chart."""
     fig, ax = plt.subplots(figsize=figsize)
 
@@ -76,9 +82,9 @@ def create_line_chart(
     data: pd.DataFrame,
     x_col: str,
     y_col: str,
-    title: str = None,
+    title: str | None = None,
     figsize: tuple[int, int] = (10, 6),
-) -> plt.Figure:
+) -> Figure:
     """Create a line chart."""
     fig, ax = plt.subplots(figsize=figsize)
 
@@ -104,11 +110,11 @@ def create_scatter_plot(
     data: pd.DataFrame,
     x_col: str,
     y_col: str,
-    title: str = None,
+    title: str | None = None,
     color_col: str | None = None,
     size_col: str | None = None,
     figsize: tuple[int, int] = (10, 6),
-) -> plt.Figure:
+) -> Figure:
     """Create a scatter plot."""
     fig, ax = plt.subplots(figsize=figsize)
 
@@ -139,9 +145,9 @@ def create_histogram(
     data: pd.DataFrame,
     column: str,
     bins: int = 30,
-    title: str = None,
+    title: str | None = None,
     figsize: tuple[int, int] = (10, 6),
-) -> plt.Figure:
+) -> Figure:
     """Create a histogram."""
     fig, ax = plt.subplots(figsize=figsize)
 
@@ -157,8 +163,8 @@ def create_histogram(
 
 
 def create_correlation_heatmap(
-    data: pd.DataFrame, title: str = None, figsize: tuple[int, int] = (8, 6)
-) -> plt.Figure:
+    data: pd.DataFrame, title: str | None = None, figsize: tuple[int, int] = (8, 6)
+) -> Figure:
     """Create a correlation heatmap."""
     # Select only numeric columns
     numeric_data = data.select_dtypes(include=[np.number])
@@ -194,9 +200,9 @@ def create_box_plot(
     data: pd.DataFrame,
     x_col: str,
     y_col: str,
-    title: str = None,
+    title: str | None = None,
     figsize: tuple[int, int] = (10, 6),
-) -> plt.Figure:
+) -> Figure:
     """Create a box plot."""
     fig, ax = plt.subplots(figsize=figsize)
 
@@ -228,4 +234,4 @@ def set_plot_style(style: str = "default") -> None:
 
 def get_plot_colors(n_colors: int = 10) -> list[str]:
     """Get a list of distinct colors for plotting."""
-    return plt.cm.Set3(np.linspace(0, 1, n_colors))
+    return [to_hex(c) for c in plt.get_cmap("Set3")(np.linspace(0, 1, n_colors))]
