@@ -57,7 +57,7 @@ dependencies = [
 [project.optional-dependencies]
 full = [
     "jupyter>=1.0.0",
-    "ipywidgets>=8.0.0",
+    "ipywidgets>=8.1.9",
     "plotly>=5.0.0",
 ]
 # Used only by the demo scripts to generate sample data
