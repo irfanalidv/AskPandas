@@ -1,4 +1,4 @@
-.PHONY: help install install-dev install-full clean test test-cov lint format type-check build dist demo examples
+.PHONY: help install install-dev install-full clean test test-cov lint format type-check build dist examples
 
 help:  ## Show this help message
 	@echo "AskPandas Development Commands"
@@ -58,9 +58,6 @@ dist:  ## Build and upload to PyPI (requires twine)
 	$(MAKE) build
 	twine upload dist/*
 
-demo:  ## Run the demo script
-	python demo.py
-
 examples:  ## Run example scripts
 	python examples/basic_usage.py
 	python examples/multi_dataframe.py
@@ -100,4 +97,4 @@ release:  ## Prepare a new release
 	@echo "Release packages built in dist/ directory"
 	@echo "To upload to PyPI, run: make dist"
 
-.PHONY: help install install-dev install-full clean test test-cov lint format type-check build dist demo examples
+.PHONY: help install install-dev install-full clean test test-cov lint format type-check build dist examples
