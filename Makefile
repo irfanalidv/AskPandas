@@ -30,7 +30,7 @@ test:  ## Run tests
 	pytest tests/ -v
 
 test-cov:  ## Run tests with coverage
-	pytest tests/ --cov=askpandas --cov-report=html --cov-report=term
+	pytest tests/ --cov=askpandas --cov-report=html --cov-report=term --cov-fail-under=85
 
 test-fast:  ## Run tests excluding LLM integration
 	pytest tests/ -v -m "not llm"
@@ -53,14 +53,17 @@ check-all:  ## Run all code quality checks
 
 build:  ## Build distribution packages
 	python -m build
+	twine check dist/*
 
 dist:  ## Build and upload to PyPI (requires twine)
 	$(MAKE) build
 	twine upload dist/*
 
-examples:  ## Run example scripts
-	python examples/basic_usage.py
-	python examples/multi_dataframe.py
+examples:  ## Run the offline example scripts
+	python examples/sales_kpis.py
+	python examples/support_tickets_multi_df.py
+	python examples/data_quality_audit.py
+	python examples/custom_llm_backend.py
 
 docs:  ## Generate documentation
 	python -m pydoc -w askpandas

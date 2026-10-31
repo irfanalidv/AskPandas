@@ -7,16 +7,18 @@ Thanks for helping improve `askpandas`!
 ```bash
 git clone https://github.com/irfanalidv/AskPandas.git
 cd AskPandas
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+uv venv && source .venv/bin/activate   # or: python -m venv .venv
+uv pip install -e ".[dev]"             # or: pip install -e ".[dev]"
+pre-commit install                     # run Ruff on every commit
 ```
 
 ## Before opening a pull request
 
 ```bash
-ruff check .          # lint
-ruff format --check . # formatting
-pytest                # tests
+ruff check .                                   # lint
+ruff format --check .                          # formatting
+mypy askpandas                                 # type-check
+pytest --cov=askpandas --cov-fail-under=85     # tests (all offline, LLM calls are mocked)
 ```
 
 - Add or update tests for any behaviour change.
