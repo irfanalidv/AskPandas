@@ -5,6 +5,48 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-10-31
+
+### Added
+
+- `askpandas.exceptions`: `AskPandasError` with `DataLoadError`, `LLMNotConfiguredError`,
+  `LLMError`, `CodeGenerationError` and `QueryProcessingError`, all exported from `askpandas`.
+  Each also subclasses the `ValueError`/`RuntimeError` raised before, so existing handlers work.
+- The chart helpers (`create_bar_chart`, ...) are callable from generated code, and every prompt
+  template now includes the sandbox rules (previously only the "analysis" template did).
+- Figures that generated code creates but does not save are saved to `output_dir` and closed.
+- `ap.DataFrame` / `validate_dataframe` accept `pathlib.Path`.
+- `validate_query` returns `matched_columns`.
+- Examples rewritten as four offline, runnable use cases (`examples/`), with sample data in
+  `examples/data/`.
+- CI runs mypy and enforces 85% coverage; CodeQL workflow; pre-commit config.
+
+### Fixed
+
+- `StatisticalAnalyzer.hypothesis_testing` with `"mann_whitney"`, `"kruskal_wallis"` or
+  `"t_test_paired"` raised `AttributeError` (the methods were nested inside another function).
+- `"anova"` always failed ("truth value of a Series is ambiguous"); eta squared is now computed
+  from the pooled observations.
+- `correlation_analysis` p-values used columns with NaNs dropped independently (misaligned
+  samples); missing values are now dropped pairwise.
+- The `benchmark_function` decorator always raised `KeyError`; it now returns the function's
+  value, logs instead of printing, and re-raises the original exception on failure.
+- Peak memory was always 0.0 outside Windows.
+- `validate_query` flagged every English word as a missing column.
+- A later `set_llm()` was ignored by existing `AskDataFrame` objects.
+- Execution history recorded sandbox failures as successes and never recorded execution time.
+- `copy.copy(AskDataFrame)` recursed forever.
+- `get_plot_colors` returned an RGBA array instead of the documented list of colour strings.
+- Bare `except:` clauses replaced with specific exceptions.
+
+### Changed
+
+- Importing `askpandas` no longer changes the global matplotlib/seaborn style; use
+  `set_config(plot_style=...)` to apply one.
+- `verbose=True` logs through the `askpandas` logger instead of printing.
+- Ruff rule set broadened (`SIM`, `C4`, `RUF`, `PTH`, `RET`, `PIE`); mypy config added.
+- Removed stale root-level demo scripts and status documents.
+
 ## [0.2.0] - 2026-10-31
 
 ### Fixed
