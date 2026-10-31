@@ -63,25 +63,25 @@ class StatisticalAnalyzer:
         # Calculate p-values for significance testing
         p_values = pd.DataFrame(index=self.numeric_cols, columns=self.numeric_cols)
 
+        tests = {
+            "pearson": stats.pearsonr,
+            "spearman": stats.spearmanr,
+            "kendall": stats.kendalltau,
+        }
+        test = tests.get(method, stats.kendalltau)
         for i, col1 in enumerate(self.numeric_cols):
             for j, col2 in enumerate(self.numeric_cols):
                 if i != j:
-                    try:
-                        if method == "pearson":
-                            corr, p_val = stats.pearsonr(
-                                self.df[col1].dropna(), self.df[col2].dropna()
-                            )
-                        elif method == "spearman":
-                            corr, p_val = stats.spearmanr(
-                                self.df[col1].dropna(), self.df[col2].dropna()
-                            )
-                        else:
-                            corr, p_val = stats.kendalltau(
-                                self.df[col1].dropna(), self.df[col2].dropna()
-                            )
-                        p_values.loc[col1, col2] = p_val
-                    except:
+                    # Drop missing values pairwise so both samples stay aligned row by row
+                    pair = self.df[[col1, col2]].dropna()
+                    if len(pair) < 3:
                         p_values.loc[col1, col2] = np.nan
+                        continue
+                    try:
+                        _, p_val = test(pair[col1], pair[col2])
+                    except (ValueError, TypeError, FloatingPointError):
+                        p_val = np.nan
+                    p_values.loc[col1, col2] = p_val
 
         # Identify significant correlations
         significant_correlations = []
@@ -122,14 +122,13 @@ class StatisticalAnalyzer:
         abs_corr = abs(corr_val)
         if abs_corr >= 0.9:
             return "Very strong correlation"
-        elif abs_corr >= 0.7:
+        if abs_corr >= 0.7:
             return "Strong correlation"
-        elif abs_corr >= 0.5:
+        if abs_corr >= 0.5:
             return "Moderate correlation"
-        elif abs_corr >= 0.3:
+        if abs_corr >= 0.3:
             return "Weak correlation"
-        else:
-            return "Very weak or no correlation"
+        return "Very weak or no correlation"
 
     def outlier_detection(self, columns: list[str] | None = None, method: str = "iqr") -> dict:
         """Detect outliers using multiple methods."""
@@ -257,27 +256,25 @@ class StatisticalAnalyzer:
         """Assess normality based on test results."""
         if shapiro_p > 0.05 and ks_p > 0.05:
             return "Likely normal"
-        elif shapiro_p > 0.01 and ks_p > 0.01:
+        if shapiro_p > 0.01 and ks_p > 0.01:
             return "Possibly normal"
-        else:
-            return "Likely not normal"
+        return "Likely not normal"
 
     def hypothesis_testing(self, test_type: str, **kwargs) -> dict:
         """Perform various hypothesis tests."""
         if test_type == "t_test_independent":
             return self._independent_t_test(**kwargs)
-        elif test_type == "t_test_paired":
+        if test_type == "t_test_paired":
             return self._paired_t_test(**kwargs)
-        elif test_type == "anova":
+        if test_type == "anova":
             return self._anova_test(**kwargs)
-        elif test_type == "chi_square":
+        if test_type == "chi_square":
             return self._chi_square_test(**kwargs)
-        elif test_type == "mann_whitney":
+        if test_type == "mann_whitney":
             return self._mann_whitney_test(**kwargs)
-        elif test_type == "kruskal_wallis":
+        if test_type == "kruskal_wallis":
             return self._kruskal_wallis_test(**kwargs)
-        else:
-            return {"error": f"Unknown test type: {test_type}"}
+        return {"error": f"Unknown test type: {test_type}"}
 
     def _independent_t_test(self, group_col: str, value_col: str, group1: str, group2: str) -> dict:
         """Perform independent t-test."""
@@ -328,12 +325,11 @@ class StatisticalAnalyzer:
         abs_d = abs(d)
         if abs_d < 0.2:
             return "Small effect"
-        elif abs_d < 0.5:
+        if abs_d < 0.5:
             return "Small to medium effect"
-        elif abs_d < 0.8:
+        if abs_d < 0.8:
             return "Medium effect"
-        else:
-            return "Large effect"
+        return "Large effect"
 
     def _anova_test(self, group_col: str, value_col: str) -> dict:
         """Perform one-way ANOVA test."""
@@ -377,10 +373,9 @@ class StatisticalAnalyzer:
         """Interpret eta-squared effect size."""
         if eta_squared < 0.01:
             return "Small effect"
-        elif eta_squared < 0.06:
+        if eta_squared < 0.06:
             return "Medium effect"
-        else:
-            return "Large effect"
+        return "Large effect"
 
     def _chi_square_test(self, var1: str, var2: str) -> dict:
         """Perform chi-square test of independence."""
@@ -418,10 +413,9 @@ class StatisticalAnalyzer:
         """Interpret Cramer's V effect size."""
         if v < 0.1:
             return "Small effect"
-        elif v < 0.3:
+        if v < 0.3:
             return "Medium effect"
-        else:
-            return "Large effect"
+        return "Large effect"
 
     def distribution_analysis(self, columns: list[str] | None = None) -> dict:
         """Analyze distribution characteristics of numeric columns."""
@@ -492,6 +486,67 @@ class StatisticalAnalyzer:
         )
 
         return f"{skew_assessment}, {kurt_assessment}"
+
+    def _paired_t_test(self, group_col: str, value_col: str, group1: str, group2: str) -> dict:
+        """Perform paired t-test."""
+        try:
+            # This would require paired data - for now return error
+            return {"error": "Paired t-test not yet implemented"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def _mann_whitney_test(self, group_col: str, value_col: str, group1: str, group2: str) -> dict:
+        """Perform Mann-Whitney U test."""
+        try:
+            group1_data = self.df[self.df[group_col] == group1][value_col].dropna()
+            group2_data = self.df[self.df[group_col] == group2][value_col].dropna()
+
+            if len(group1_data) < 2 or len(group2_data) < 2:
+                return {"error": "Insufficient data for Mann-Whitney test"}
+
+            # Perform Mann-Whitney U test
+            u_stat, p_val = stats.mannwhitneyu(group1_data, group2_data, alternative="two-sided")
+
+            return {
+                "test_type": "Mann-Whitney U test",
+                "groups": (group1, group2),
+                "u_statistic": u_stat,
+                "p_value": p_val,
+                "significant": p_val < 0.05,
+                "group1_stats": {"n": len(group1_data), "median": group1_data.median()},
+                "group2_stats": {"n": len(group2_data), "median": group2_data.median()},
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    def _kruskal_wallis_test(self, group_col: str, value_col: str) -> dict:
+        """Perform Kruskal-Wallis H test."""
+        try:
+            groups = self.df[group_col].unique()
+            group_data = [
+                self.df[self.df[group_col] == group][value_col].dropna() for group in groups
+            ]
+
+            # Check if all groups have sufficient data
+            if any(len(data) < 2 for data in group_data):
+                return {"error": "Insufficient data for Kruskal-Wallis test"}
+
+            # Perform Kruskal-Wallis test
+            h_stat, p_val = kruskal(*group_data)
+
+            return {
+                "test_type": "Kruskal-Wallis H test",
+                "groups": groups.tolist(),
+                "h_statistic": h_stat,
+                "p_value": p_val,
+                "significant": p_val < 0.05,
+                "group_stats": {
+                    group: {"n": len(data), "median": data.median()}
+                    for group, data in zip(groups, group_data, strict=True)
+                },
+            }
+        except Exception as e:
+            return {"error": str(e)}
 
     def generate_statistical_report(self) -> str:
         """Generate a comprehensive statistical report."""
@@ -571,64 +626,3 @@ def detect_outliers(
     """Quick outlier detection."""
     analyzer = StatisticalAnalyzer(df)
     return analyzer.outlier_detection(columns, method)
-
-    def _paired_t_test(self, group_col: str, value_col: str, group1: str, group2: str) -> dict:
-        """Perform paired t-test."""
-        try:
-            # This would require paired data - for now return error
-            return {"error": "Paired t-test not yet implemented"}
-        except Exception as e:
-            return {"error": str(e)}
-
-    def _mann_whitney_test(self, group_col: str, value_col: str, group1: str, group2: str) -> dict:
-        """Perform Mann-Whitney U test."""
-        try:
-            group1_data = self.df[self.df[group_col] == group1][value_col].dropna()
-            group2_data = self.df[self.df[group_col] == group2][value_col].dropna()
-
-            if len(group1_data) < 2 or len(group2_data) < 2:
-                return {"error": "Insufficient data for Mann-Whitney test"}
-
-            # Perform Mann-Whitney U test
-            u_stat, p_val = stats.mannwhitneyu(group1_data, group2_data, alternative="two-sided")
-
-            return {
-                "test_type": "Mann-Whitney U test",
-                "groups": (group1, group2),
-                "u_statistic": u_stat,
-                "p_value": p_val,
-                "significant": p_val < 0.05,
-                "group1_stats": {"n": len(group1_data), "median": group1_data.median()},
-                "group2_stats": {"n": len(group2_data), "median": group2_data.median()},
-            }
-        except Exception as e:
-            return {"error": str(e)}
-
-    def _kruskal_wallis_test(self, group_col: str, value_col: str) -> dict:
-        """Perform Kruskal-Wallis H test."""
-        try:
-            groups = self.df[group_col].unique()
-            group_data = [
-                self.df[self.df[group_col] == group][value_col].dropna() for group in groups
-            ]
-
-            # Check if all groups have sufficient data
-            if any(len(data) < 2 for data in group_data):
-                return {"error": "Insufficient data for Kruskal-Wallis test"}
-
-            # Perform Kruskal-Wallis test
-            h_stat, p_val = kruskal(*group_data)
-
-            return {
-                "test_type": "Kruskal-Wallis H test",
-                "groups": groups.tolist(),
-                "h_statistic": h_stat,
-                "p_value": p_val,
-                "significant": p_val < 0.05,
-                "group_stats": {
-                    group: {"n": len(data), "median": data.median()}
-                    for group, data in zip(groups, group_data, strict=True)
-                },
-            }
-        except Exception as e:
-            return {"error": str(e)}

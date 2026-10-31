@@ -20,7 +20,7 @@ class DataQualityAnalyzer:
         """Initialize with a dataframe."""
         self.df = df
         self.original_shape = df.shape
-        self.quality_report = {}
+        self.quality_report: dict[str, Any] = {}
 
     def comprehensive_quality_assessment(self) -> dict[str, Any]:
         """Perform comprehensive data quality assessment."""
@@ -277,7 +277,7 @@ class DataQualityAnalyzer:
                             "memory_saving": memory_saving,
                             "reason": f"Values range from {min_val} to {max_val}, can use uint8",
                         }
-                    elif max_val <= 65535:
+                    if max_val <= 65535:
                         new_type = "uint16"
                         memory_saving = (
                             (
@@ -354,7 +354,7 @@ class DataQualityAnalyzer:
 
     def _analyze_value_ranges(self) -> dict[str, Any]:
         """Analyze value ranges and identify potential issues."""
-        range_info = {}
+        range_info: dict[str, Any] = {}
 
         # Numeric column ranges
         numeric_ranges = {}
@@ -457,8 +457,8 @@ class DataQualityAnalyzer:
                                     "severity": "medium",
                                 }
                             )
-                except:
-                    pass
+                except (ValueError, TypeError, OverflowError):
+                    pass  # not a date column
 
         consistency_info["logical_inconsistencies"] = logical_inconsistencies
 
@@ -725,7 +725,7 @@ class DataCleaner:
     def __init__(self, df: pd.DataFrame):
         """Initialize with a dataframe."""
         self.df = df.copy()
-        self.cleaning_log = []
+        self.cleaning_log: list[str] = []
 
     def auto_clean(self, aggressive: bool = False) -> pd.DataFrame:
         """Automatically clean the dataframe based on common issues."""
@@ -777,7 +777,7 @@ class DataCleaner:
                         self.df[col] = numeric_col
                         self.cleaning_log.append(f"Converted {col} to numeric type")
                         continue
-                except:
+                except (ValueError, TypeError):
                     pass
 
                 # Try to convert to datetime
@@ -787,7 +787,7 @@ class DataCleaner:
                         self.df[col] = datetime_col
                         self.cleaning_log.append(f"Converted {col} to datetime type")
                         continue
-                except:
+                except (ValueError, TypeError):
                     pass
 
                 # Try to convert to category if low cardinality

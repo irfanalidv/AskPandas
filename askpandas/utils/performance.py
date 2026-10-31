@@ -4,6 +4,8 @@ Provides tools to measure and improve performance of data operations.
 """
 
 import gc
+import logging
+import sys
 import time
 from collections.abc import Callable
 from functools import wraps
@@ -14,6 +16,8 @@ import pandas as pd
 import psutil
 
 from .helpers import is_text_column
+
+logger = logging.getLogger(__name__)
 
 
 class PerformanceBenchmark:
@@ -38,12 +42,13 @@ class PerformanceBenchmark:
         start_time = time.perf_counter()
         start_cpu = time.process_time()
 
+        value: Any = None
+        exception: Exception | None = None
         try:
-            operation(*args, **kwargs)
-            success = True
-        except Exception as e:
-            success = False
-            error = str(e)
+            value = operation(*args, **kwargs)
+        except Exception as e:  # recorded in the result instead of propagating
+            exception = e
+        success = exception is None
 
         end_time = time.perf_counter()
         end_cpu = time.process_time()
@@ -65,10 +70,12 @@ class PerformanceBenchmark:
             "final_memory_mb": final_memory["rss"] / 1024 / 1024,
             "success": success,
             "timestamp": time.time(),
+            "result": value,
         }
 
-        if not success:
-            benchmark_result["error"] = error
+        if exception is not None:
+            benchmark_result["error"] = str(exception)
+            benchmark_result["exception"] = exception
 
         self.benchmarks[name] = benchmark_result
         return benchmark_result
@@ -94,7 +101,7 @@ class PerformanceBenchmark:
 
     def compare_operations(self, operation_sets: list[dict[str, Any]]) -> dict[str, Any]:
         """Compare performance of different operation sets."""
-        comparison = {
+        comparison: dict[str, Any] = {
             "operation_sets": [],
             "performance_ranking": [],
             "recommendations": [],
@@ -140,7 +147,7 @@ class PerformanceBenchmark:
 
     def _generate_performance_recommendations(self, comparison: dict[str, Any]) -> list[str]:
         """Generate performance improvement recommendations."""
-        recommendations = []
+        recommendations: list[str] = []
 
         if not comparison["operation_sets"]:
             return recommendations
@@ -339,7 +346,7 @@ class PerformanceOptimizer:
                     analysis["suggested_type"] = "float32"
                     analysis["can_optimize"] = True
                     analysis["reason"] = f"Precision loss is {precision_loss:.2e}, can use float32"
-            except:
+            except (ValueError, TypeError, OverflowError):
                 pass
 
         # Object to category optimization
@@ -356,7 +363,7 @@ class PerformanceOptimizer:
                 optimized_series = series.astype(analysis["suggested_type"])
                 optimized_size_mb = optimized_series.memory_usage(deep=True) / 1024 / 1024
                 analysis["potential_savings_mb"] = analysis["current_size_mb"] - optimized_size_mb
-            except:
+            except (ValueError, TypeError):
                 analysis["can_optimize"] = False
 
         return analysis
@@ -397,10 +404,20 @@ class PerformanceOptimizer:
     def _get_peak_memory(self) -> float:
         """Get peak memory usage."""
         try:
-            process = psutil.Process()
-            return process.memory_info().peak_wset / 1024 / 1024
-        except:
+            info = psutil.Process().memory_info()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
             return 0.0
+        peak = getattr(info, "peak_wset", None)  # Windows only
+        if peak is not None:
+            return float(peak) / 1024 / 1024
+        try:
+            import resource
+        except ImportError:  # pragma: no cover - non-POSIX without peak_wset
+            return float(info.rss) / 1024 / 1024
+        max_rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        # ru_maxrss is bytes on macOS and kilobytes on Linux
+        divisor = 1024 * 1024 if sys.platform == "darwin" else 1024
+        return float(max_rss) / divisor
 
     def _analyze_operation_optimization(self, df: pd.DataFrame) -> dict[str, Any]:
         """Analyze operation optimization opportunities."""
@@ -437,11 +454,10 @@ class PerformanceOptimizer:
                 "chunk_size": max(1000, int(1000 / total_memory_mb * len(df))),
                 "reason": f"Dataset size ({total_memory_mb:.1f}MB) suggests chunked processing",
             }
-        else:
-            return {
-                "recommended": False,
-                "reason": "Dataset size is manageable for in-memory processing",
-            }
+        return {
+            "recommended": False,
+            "reason": "Dataset size is manageable for in-memory processing",
+        }
 
     def _identify_parallel_processing_opportunities(self, df: pd.DataFrame) -> list[str]:
         """Identify operations that could benefit from parallel processing."""
@@ -491,7 +507,7 @@ class PerformanceOptimizer:
         return recommendations
 
 
-def benchmark_function(name: str = None):
+def benchmark_function(name: str | None = None):
     """Decorator to benchmark a function."""
 
     def decorator(func):
@@ -502,13 +518,16 @@ def benchmark_function(name: str = None):
 
             result = benchmarker.benchmark_operation(op_name, func, *args, **kwargs)
 
-            # Print benchmark results
-            print(f"Benchmark: {op_name}")
-            print(f"  Time: {result['wall_time']:.4f}s")
-            print(f"  Memory: {result['memory_delta_mb']:.2f}MB")
-            print(f"  Success: {result['success']}")
-
-            return result["result"] if result["success"] else None
+            logger.info(
+                "Benchmark %s: %.4fs, %.2f MB, success=%s",
+                op_name,
+                result["wall_time"],
+                result["memory_delta_mb"],
+                result["success"],
+            )
+            if not result["success"]:
+                raise result["exception"]
+            return result["result"]
 
         return wrapper
 
@@ -533,8 +552,8 @@ def optimize_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
                 optimizations_applied.append(
                     f"Optimized {col_analysis['column']}: {col_analysis['current_type']} → {col_analysis['suggested_type']}"
                 )
-            except:
-                pass
+            except (ValueError, TypeError) as e:
+                logger.debug("Could not optimize column %s: %s", col_analysis["column"], e)
 
     return optimized_df, optimizations_applied
 
@@ -553,5 +572,6 @@ def get_performance_summary() -> dict[str, Any]:
             "disk_usage_percent": (disk.used / disk.total) * 100,
             "disk_free_gb": disk.free / 1024 / 1024 / 1024,
         }
-    except:
+    except (psutil.Error, OSError) as e:
+        logger.debug("psutil system query failed: %s", e)
         return {"error": "Unable to get system performance information"}
